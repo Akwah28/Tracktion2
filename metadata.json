@@ -1,0 +1,8 @@
+{
+  "name": "Tracktion",
+  "description": "A premium mobile-first goal tracker designed to help you build habits, sustain streaks, and reach your aspirations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
