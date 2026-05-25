@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety net - default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprints
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['name', 'avatarSeed', 'joinedAt', 'isOnboarded', 'stats'])
+        && data.keys().size() >= 5 && data.keys().size() <= 8
+        && data.name is string && data.name.size() <= 128
+        && data.avatarSeed is string && data.avatarSeed.size() <= 128
+        && data.joinedAt is string && data.joinedAt.size() <= 64
+        && data.isOnboarded is bool
+        && data.stats is map
+        && (!data.keys().hasAny(['avatarUrl']) || data.avatarUrl is string && data.avatarUrl.size() <= 2048)
+        && (!data.keys().hasAny(['preferredCategory']) || data.preferredCategory is string && data.preferredCategory.size() <= 128)
+        && (!data.keys().hasAny(['weeklyGoalCount']) || data.weeklyGoalCount is number && data.weeklyGoalCount >= 0 && data.weeklyGoalCount <= 100);
+    }
+
+    function isValidGoal(data) {
+      return data.keys().hasAll(['id', 'title', 'category', 'targetValue', 'currentValue', 'unit', 'frequency', 'streak', 'createdAt', 'color', 'icon', 'logs'])
+        && data.keys().size() >= 12 && data.keys().size() <= 17
+        && data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 128
+        && data.category is string && data.category.size() <= 128
+        && data.targetValue is number && data.targetValue >= 0
+        && data.currentValue is number && data.currentValue >= 0
+        && data.unit is string && data.unit.size() <= 64
+        && data.frequency is string && data.frequency.size() <= 64
+        && data.streak is number && data.streak >= 0
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.color is string && data.color.size() <= 128
+        && data.icon is string && data.icon.size() <= 128
+        && data.logs is list && data.logs.size() <= 500
+        && (!data.keys().hasAny(['description']) || data.description is string && data.description.size() <= 1024)
+        && (!data.keys().hasAny(['lastCompletedDate']) || data.lastCompletedDate is string && data.lastCompletedDate.size() <= 64)
+        && (!data.keys().hasAny(['deadline']) || data.deadline is string && data.deadline.size() <= 64)
+        && (!data.keys().hasAny(['priority']) || data.priority is string && data.priority.size() <= 32)
+        && (!data.keys().hasAny(['difficulty']) || data.difficulty is string && data.difficulty.size() <= 32);
+    }
+
+    // Users Collection rules
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming());
+      
+      // Profile updates must protect immutable keys
+      allow update: if isOwner(userId) 
+        && isValidUserProfile(incoming())
+        && incoming().joinedAt == existing().joinedAt; // Immortal joinedAt key
+        
+      allow delete: if isOwner(userId);
+      
+      // Subcollections under users/{userId}
+      match /goals/{goalId} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(goalId) && isValidGoal(incoming());
+        allow update: if isOwner(userId)
+          && isValidGoal(incoming())
+          && incoming().id == existing().id
+          && incoming().createdAt == existing().createdAt; // Immortal createdAt key
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

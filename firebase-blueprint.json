@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with streak counters and personal details",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "avatarSeed": {
+          "type": "string"
+        },
+        "avatarUrl": {
+          "type": "string"
+        },
+        "joinedAt": {
+          "type": "string"
+        },
+        "isOnboarded": {
+          "type": "boolean"
+        },
+        "stats": {
+          "type": "object"
+        },
+        "preferredCategory": {
+          "type": "string"
+        },
+        "weeklyGoalCount": {
+          "type": "number"
+        }
+      },
+      "required": ["name", "avatarSeed", "joinedAt", "isOnboarded", "stats"]
+    },
+    "Goal": {
+      "title": "Goal",
+      "description": "A tracked goal or habit with physical or mental metrics",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "targetValue": {
+          "type": "number"
+        },
+        "currentValue": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "frequency": {
+          "type": "string"
+        },
+        "streak": {
+          "type": "number"
+        },
+        "lastCompletedDate": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string"
+        },
+        "logs": {
+          "type": "array"
+        }
+      },
+      "required": ["id", "title", "category", "targetValue", "currentValue", "unit", "frequency", "streak", "createdAt", "color", "icon", "logs"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Contains user custom settings and profile configuration"
+    },
+    "users/{userId}/goals/{goalId}": {
+      "schema": "Goal",
+      "description": "Collections of goals tracked by a specific user"
+    }
+  }
+}

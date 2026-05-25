@@ -19,7 +19,9 @@ import {
   LogOut,
   Sliders,
   CheckCircle2,
-  Filter
+  Filter,
+  Share2,
+  Trophy
 } from 'lucide-react';
 import { Goal, UserProfile, GoalFrequency } from './types';
 import { CATEGORIES, INITIAL_GOALS } from './sampleData';
@@ -28,30 +30,44 @@ import CreateGoal from './components/CreateGoal';
 import GoalDetail from './components/GoalDetail';
 import StatsDashboard from './components/StatsDashboard';
 import DynamicIcon from './components/DynamicIcon';
-
-// Local storage keys
-const LOCAL_PROFILE_KEY = 'tracktion_user_profile';
-const LOCAL_GOALS_KEY = 'tracktion_user_goals';
+import ShareModal from './components/ShareModal';
+import ProfileSettings from './components/ProfileSettings';
+import { useAuth } from './context/AuthContext';
+import AuthScreen from './components/AuthScreen';
+import { db, handleFirestoreError, OperationType } from './firebase';
+import { doc, getDocFromServer, onSnapshot, setDoc, deleteDoc, collection } from 'firebase/firestore';
 
 export default function App() {
-  // Load states from LocalStorage or default to null
-  const [profile, setProfile] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem(LOCAL_PROFILE_KEY);
-    return saved ? JSON.parse(saved) : null;
-  });
+  const { user, loading: authLoading, logout } = useAuth();
 
-  const [goals, setGoals] = useState<Goal[]>(() => {
-    const saved = localStorage.getItem(LOCAL_GOALS_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Load states synced dynamically with Firestore
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [isPendingOnboarding, setIsPendingOnboarding] = useState(false);
+  const [firestoreOffline, setFirestoreOffline] = useState(false);
 
   // Navigation states
-  const [activeTab, setActiveTab] = useState<'targets' | 'stats' | 'profile'>('targets');
+  const [activeTab, setActiveTab] = useState<'targets' | 'quest' | 'stats' | 'profile'>('targets');
   
   // Selection / Modal states
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+
+  // Keep selectedGoal in sync with the live goals array
+  useEffect(() => {
+    if (selectedGoal) {
+      const liveGoal = goals.find(g => g.id === selectedGoal.id);
+      if (liveGoal) {
+        if (JSON.stringify(liveGoal) !== JSON.stringify(selectedGoal)) {
+          setSelectedGoal(liveGoal);
+        }
+      } else {
+        setSelectedGoal(null);
+      }
+    }
+  }, [goals, selectedGoal]);
   const [isCreatingGoal, setIsCreatingGoal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | undefined>(undefined);
+  const [sharingGoal, setSharingGoal] = useState<Goal | null>(null);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,19 +77,98 @@ export default function App() {
   // Trigger celebration banner when a goal gets newly completed
   const [celebrationGoal, setCelebrationGoal] = useState<string | null>(null);
 
-  // Save profile state to localStorage
-  useEffect(() => {
-    if (profile) {
-      localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
-    } else {
-      localStorage.removeItem(LOCAL_PROFILE_KEY);
-    }
-  }, [profile]);
+  // Operational error feedback toast
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Save goals list to localStorage
+  const triggerError = (error: unknown, op: OperationType, path: string) => {
+    try {
+      handleFirestoreError(error, op, path);
+    } catch (err: any) {
+      try {
+        const parsed = JSON.parse(err.message);
+        let errorMsg = parsed.error || "A secure connection or authorization error occurred.";
+        if (errorMsg.includes("permission") || errorMsg.includes("unauthorized") || errorMsg.includes("Missing or insufficient permissions")) {
+          errorMsg = "Security Block: You are not authorized to perform this operation.";
+        }
+        setErrorMessage(errorMsg);
+      } catch {
+        setErrorMessage("Secure database operation failed.");
+      }
+    }
+  };
+
+  // Auto-dismiss errors after timeout
   useEffect(() => {
-    localStorage.setItem(LOCAL_GOALS_KEY, JSON.stringify(goals));
-  }, [goals]);
+    if (errorMessage) {
+      const timer = setTimeout(() => {
+        setErrorMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
+  // Validate Connection to Firestore on initial boot
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+        setFirestoreOffline(false);
+      } catch (error) {
+        setFirestoreOffline(true);
+        console.warn("Firestore backend currently offline/unreachable. Seamlessly fell back to IndexedDB local cache.");
+      }
+    }
+    testConnection();
+  }, []);
+
+  // Sync with Firestore profile & goals when user changes
+  useEffect(() => {
+    if (!user) {
+      setProfile(null);
+      setGoals([]);
+      setIsPendingOnboarding(false);
+      return;
+    }
+
+    // Dynamic subscription to UserProfile
+    const unsubscribeProfile = onSnapshot(
+      doc(db, 'users', user.uid),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setProfile(snapshot.data() as UserProfile);
+          setIsPendingOnboarding(false);
+        } else {
+          setProfile(null);
+          setIsPendingOnboarding(true);
+        }
+      },
+      (error) => {
+        triggerError(error, OperationType.GET, `users/${user.uid}`);
+      }
+    );
+
+    // Dynamic subscription to tracker Goals list
+    const unsubscribeGoals = onSnapshot(
+      collection(db, 'users', user.uid, 'goals'),
+      (snapshot) => {
+        const list: Goal[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as Goal);
+        });
+        // Sort goals by creation date descending
+        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setGoals(list);
+      },
+      (error) => {
+        triggerError(error, OperationType.LIST, `users/${user.uid}/goals`);
+      }
+    );
+
+    return () => {
+      unsubscribeProfile();
+      unsubscribeGoals();
+    };
+  }, [user]);
 
   // Helper date function
   const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -84,14 +179,22 @@ export default function App() {
   };
 
   // Complete onboarding workflow callback
-  const handleOnboardingComplete = (newProfile: UserProfile, initialGoals: Goal[]) => {
-    setProfile(newProfile);
-    setGoals(initialGoals);
-    setActiveTab('targets');
+  const handleOnboardingComplete = async (newProfile: UserProfile, initialGoals: Goal[]) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'users', user.uid), newProfile);
+      for (const g of initialGoals) {
+        await setDoc(doc(db, 'users', user.uid, 'goals', g.id), g);
+      }
+      setActiveTab('targets');
+      setIsPendingOnboarding(false);
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}`);
+    }
   };
 
   // Create or Update Goal callback
-  const handleSaveGoal = (goalData: {
+  const handleSaveGoal = async (goalData: {
     id?: string;
     title: string;
     description: string;
@@ -101,178 +204,183 @@ export default function App() {
     frequency: GoalFrequency;
     color: string;
     icon: string;
+    deadline?: string;
+    priority?: 'low' | 'medium' | 'high';
+    difficulty?: 'easy' | 'medium' | 'hard';
   }) => {
+    if (!user) return;
     const today = getTodayStr();
 
-    if (goalData.id) {
-      // Editing
-      setGoals(prev => prev.map(g => {
-        if (g.id === goalData.id) {
-          const updatedVal = Math.min(g.currentValue, goalData.targetValue);
-          return {
-            ...g,
-            title: goalData.title,
-            description: goalData.description,
-            category: goalData.category,
-            targetValue: goalData.targetValue,
-            currentValue: updatedVal,
-            unit: goalData.unit,
-            frequency: goalData.frequency,
-            color: goalData.color,
-            icon: goalData.icon
-          };
-        }
-        return g;
-      }));
-    } else {
-      // Creating NEW Habit
-      const newGoal: Goal = {
-        id: `goal-${Date.now()}`,
-        title: goalData.title,
-        description: goalData.description,
-        category: goalData.category,
-        targetValue: goalData.targetValue,
-        currentValue: 0,
-        unit: goalData.unit,
-        frequency: goalData.frequency,
-        streak: 0,
-        createdAt: today,
-        color: goalData.color,
-        icon: goalData.icon,
-        logs: []
-      };
-      setGoals(prev => [newGoal, ...prev]);
-    }
+    try {
+      if (goalData.id) {
+        // Editing existing Goal
+        const existingGoal = goals.find(g => g.id === goalData.id);
+        if (!existingGoal) return;
 
-    setIsCreatingGoal(false);
-    setEditingGoal(undefined);
+        const updatedVal = Math.min(existingGoal.currentValue, goalData.targetValue);
+        const updatedGoal: Goal = {
+          ...existingGoal,
+          title: goalData.title,
+          description: goalData.description,
+          category: goalData.category,
+          targetValue: goalData.targetValue,
+          currentValue: updatedVal,
+          unit: goalData.unit,
+          frequency: goalData.frequency,
+          color: goalData.color,
+          icon: goalData.icon,
+          deadline: goalData.deadline || undefined,
+          priority: goalData.priority || 'medium',
+          difficulty: goalData.difficulty || 'medium',
+        };
+        await setDoc(doc(db, 'users', user.uid, 'goals', goalData.id), updatedGoal);
+      } else {
+        // Creating NEW tracked Goal
+        const goalId = `goal-${Date.now()}`;
+        const newGoal: Goal = {
+          id: goalId,
+          title: goalData.title,
+          description: goalData.description,
+          category: goalData.category,
+          targetValue: goalData.targetValue,
+          currentValue: 0,
+          unit: goalData.unit,
+          frequency: goalData.frequency,
+          streak: 0,
+          createdAt: today,
+          color: goalData.color,
+          icon: goalData.icon,
+          logs: [],
+          deadline: goalData.deadline || undefined,
+          priority: goalData.priority || 'medium',
+          difficulty: goalData.difficulty || 'medium',
+        };
+        await setDoc(doc(db, 'users', user.uid, 'goals', goalId), newGoal);
+      }
+      setIsCreatingGoal(false);
+      setEditingGoal(undefined);
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}/goals/${goalData.id || 'new'}`);
+    }
   };
 
   // Delete goal
-  const handleDeleteGoal = (goalId: string) => {
-    setGoals(prev => prev.filter(g => g.id !== goalId));
-    if (selectedGoal?.id === goalId) {
-      setSelectedGoal(null);
+  const handleDeleteGoal = async (goalId: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'goals', goalId));
+      if (selectedGoal?.id === goalId) {
+        setSelectedGoal(null);
+      }
+    } catch (error) {
+      triggerError(error, OperationType.DELETE, `users/${user.uid}/goals/${goalId}`);
     }
   };
 
   // Delete single history log
-  const handleDeleteLog = (goalId: string, logId: string) => {
-    setGoals(prev => prev.map(g => {
-      if (g.id === goalId) {
-        const foundLog = g.logs.find(l => l.id === logId);
-        if (!foundLog) return g;
+  const handleDeleteLog = async (goalId: string, logId: string) => {
+    if (!user) return;
+    const g = goals.find(item => item.id === goalId);
+    if (!g) return;
 
-        const updatedLogs = g.logs.filter(l => l.id !== logId);
-        const updatedVal = Math.max(0, g.currentValue - foundLog.value);
+    try {
+      const foundLog = g.logs.find(l => l.id === logId);
+      if (!foundLog) return;
 
-        // Recalculate streak if removing the last completed action
-        let newStreak = g.streak;
-        if (updatedVal < g.targetValue && g.currentValue >= g.targetValue) {
-          // Decrement streak safely
-          newStreak = Math.max(0, g.streak - 1);
-        }
+      const updatedLogs = g.logs.filter(l => l.id !== logId);
+      const updatedVal = Math.max(0, g.currentValue - foundLog.value);
 
-        return {
-          ...g,
-          logs: updatedLogs,
-          currentValue: updatedVal,
-          streak: newStreak,
-          lastCompletedDate: updatedLogs.length > 0 ? updatedLogs[updatedLogs.length - 1].date : undefined
-        };
+      // Recalculate streak if removing the last completed action
+      let newStreak = g.streak;
+      if (updatedVal < g.targetValue && g.currentValue >= g.targetValue) {
+        newStreak = Math.max(0, g.streak - 1);
       }
-      return g;
-    }));
 
-    // Sync active detail modal
-    setTimeout(() => {
-      setGoals(current => {
-        const matching = current.find(item => item.id === goalId);
-        if (matching) setSelectedGoal(matching);
-        return current;
-      });
-    }, 50);
+      const updatedGoal: Goal = {
+        ...g,
+        logs: updatedLogs,
+        currentValue: updatedVal,
+        streak: newStreak,
+        lastCompletedDate: updatedLogs.length > 0 ? updatedLogs[updatedLogs.length - 1].date : undefined
+      };
+
+      await setDoc(doc(db, 'users', user.uid, 'goals', goalId), updatedGoal);
+
+      setTimeout(() => {
+        setSelectedGoal(updatedGoal);
+      }, 50);
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}/goals/${goalId}`);
+    }
   };
 
   // Log session progress & compute streak indices
-  const handleUpdateProgress = (goalId: string, increment: number, note?: string) => {
+  const handleUpdateProgress = async (goalId: string, increment: number, note?: string) => {
+    if (!user || !profile) return;
     const today = getTodayStr();
     const yesterday = getYesterdayStr();
 
-    setGoals(prev => prev.map(g => {
-      if (g.id === goalId) {
-        const prevValue = g.currentValue;
-        const nextValue = g.currentValue + increment;
-        const reachedCompletion = nextValue >= g.targetValue;
-        const wasCompletedBefore = prevValue >= g.targetValue;
+    const g = goals.find(item => item.id === goalId);
+    if (!g) return;
 
-        const newLog = {
-          id: `log-${Date.now()}`,
-          date: today,
-          value: increment,
-          note
-        };
+    try {
+      const prevValue = g.currentValue;
+      const nextValue = g.currentValue + increment;
+      const reachedCompletion = nextValue >= g.targetValue;
+      const wasCompletedBefore = prevValue >= g.targetValue;
 
-        const updatedLogs = [...g.logs, newLog];
+      const newLog = {
+        id: `log-${Date.now()}`,
+        date: today,
+        value: increment,
+        note
+      };
 
-        let updatedStreak = g.streak;
-        let finalCompletionDate = g.lastCompletedDate;
+      const updatedLogs = [...g.logs, newLog];
 
-        if (reachedCompletion && !wasCompletedBefore) {
-          // Goal is completed newly today!
-          // Celeb state
-          setCelebrationGoal(g.title);
-          setTimeout(() => setCelebrationGoal(null), 3000);
+      let updatedStreak = g.streak;
+      let finalCompletionDate = g.lastCompletedDate;
 
-          finalCompletionDate = today;
+      if (reachedCompletion && !wasCompletedBefore) {
+        // Goal is completed newly today!
+        setCelebrationGoal(g.title);
+        setTimeout(() => setCelebrationGoal(null), 3000);
 
-          // Compute streak
-          if (!g.lastCompletedDate) {
-            // first time completion ever
-            updatedStreak = 1;
-          } else if (g.lastCompletedDate === yesterday) {
-            // completed yesterday, build consecutive streak
-            updatedStreak += 1;
-          } else if (g.lastCompletedDate === today) {
-            // already completed today, streak stays the same
-          } else {
-            // completed some time in past but missed yesterday, reset streak to 1
-            updatedStreak = 1;
-          }
+        finalCompletionDate = today;
+
+        if (!g.lastCompletedDate) {
+          updatedStreak = 1;
+        } else if (g.lastCompletedDate === yesterday) {
+          updatedStreak += 1;
+        } else if (g.lastCompletedDate === today) {
+          // already completed today
+        } else {
+          updatedStreak = 1;
         }
-
-        return {
-          ...g,
-          currentValue: nextValue,
-          logs: updatedLogs,
-          streak: updatedStreak,
-          lastCompletedDate: finalCompletionDate
-        };
       }
-      return g;
-    }));
 
-    // Refresh active detail modal state
-    setTimeout(() => {
-      setGoals(current => {
-        const matching = current.find(item => item.id === goalId);
-        if (matching) setSelectedGoal(matching);
-        return current;
-      });
-    }, 50);
+      const updatedGoal: Goal = {
+        ...g,
+        currentValue: nextValue,
+        logs: updatedLogs,
+        streak: updatedStreak,
+        lastCompletedDate: finalCompletionDate
+      };
 
-    // Update global user streak history
-    setProfile(currProf => {
-      if (!currProf) return null;
+      // Update goal in Firestore
+      await setDoc(doc(db, 'users', user.uid, 'goals', goalId), updatedGoal);
 
-      const updatedHistory = Array.from(new Set([...currProf.stats.streakHistory, today])).sort();
+      setTimeout(() => {
+        setSelectedGoal(updatedGoal);
+      }, 50);
+
+      // Update global user streak history
+      const updatedHistory = Array.from(new Set([...profile.stats.streakHistory, today])).sort();
       
-      // Calculate continuous global streak tracing backward from today
       let contiguousStreak = 0;
-      let checkDate = new Date();
       let hasStreakForCheck = true;
 
-      // Verify if today is in history or yesterday is in history
+      // Verify if today or yesterday are in history
       const hasToday = updatedHistory.includes(today);
       const hasYesterday = updatedHistory.includes(yesterday);
 
@@ -280,7 +388,7 @@ export default function App() {
         let currentCheckStr = hasToday ? today : yesterday;
         contiguousStreak = 0;
         
-        // Loop back checking daily existence
+        // Loop backward checking sequential daily existence
         const daysToCheck = new Date(currentCheckStr);
         while (hasStreakForCheck) {
           const checkStr = daysToCheck.toISOString().split('T')[0];
@@ -293,21 +401,26 @@ export default function App() {
         }
       }
 
-      return {
-        ...currProf,
+      const updatedProfile: UserProfile = {
+        ...profile,
         stats: {
-          ...currProf.stats,
+          ...profile.stats,
           globalStreak: contiguousStreak,
           lastActiveDate: today,
           streakHistory: updatedHistory
         }
       };
-    });
+
+      // Set user profile in Firestore
+      await setDoc(doc(db, 'users', user.uid), updatedProfile);
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}/goals/${goalId}`);
+    }
   };
 
   // Immediate 1-step completion shortcut on main card list
   const handleQuickComplete = (e: React.MouseEvent, goal: Goal) => {
-    e.stopPropagation(); // Avoid opening detailed modal
+    e.stopPropagation();
     const needed = Math.max(0, goal.targetValue - goal.currentValue);
     if (needed > 0) {
       handleUpdateProgress(goal.id, needed, 'Quick complete check-in');
@@ -315,8 +428,8 @@ export default function App() {
   };
 
   // Reset demo profile setup to sample placeholder data
-  const handleLoadSampleData = () => {
-    const today = getTodayStr();
+  const handleLoadSampleData = async () => {
+    if (!user) return;
     const demoProfile: UserProfile = {
       name: 'Sarah Jenkins',
       avatarSeed: '🦊',
@@ -333,14 +446,25 @@ export default function App() {
       }
     };
 
-    localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(demoProfile));
-    localStorage.setItem(LOCAL_GOALS_KEY, JSON.stringify(INITIAL_GOALS));
+    try {
+      await setDoc(doc(db, 'users', user.uid), demoProfile);
+      
+      // Delete existing goals first
+      for (const g of goals) {
+        await deleteDoc(doc(db, 'users', user.uid, 'goals', g.id));
+      }
 
-    setProfile(demoProfile);
-    setGoals(INITIAL_GOALS);
-    setActiveTab('targets');
-    setSelectedGoal(null);
-    setIsCreatingGoal(false);
+      // Load presets sample
+      for (const g of INITIAL_GOALS) {
+        await setDoc(doc(db, 'users', user.uid, 'goals', g.id), g);
+      }
+
+      setActiveTab('targets');
+      setSelectedGoal(null);
+      setIsCreatingGoal(false);
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}`);
+    }
   };
 
   // Helper code to get dynamic yesterday strings for sample data
@@ -350,14 +474,16 @@ export default function App() {
     return d.toISOString().split('T')[0];
   }
 
-  const handleResetApp = () => {
-    localStorage.removeItem(LOCAL_PROFILE_KEY);
-    localStorage.removeItem(LOCAL_GOALS_KEY);
-    setProfile(null);
-    setGoals([]);
-    setSelectedGoal(null);
-    setIsCreatingGoal(false);
+  const handleResetApp = async () => {
+    try {
+      await logout();
+      setSelectedGoal(null);
+      setIsCreatingGoal(false);
+    } catch (error) {
+      console.error("Failed to sign out:", error);
+    }
   };
+
 
   // Filter list values
   const filteredGoals = useMemo(() => {
@@ -375,13 +501,46 @@ export default function App() {
     });
   }, [goals, searchQuery, categoryFilter, statusFilter]);
 
-  // If user is not onboarded, lock inside Onboarding flow
-  if (!profile) {
+  // 1. Show a full-page loading state while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="flex bg-slate-900 justify-center items-center min-h-screen">
+        <div className="bg-slate-50/90 w-full max-w-md h-[100dvh] md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl border-4 border-slate-950 flex flex-col justify-center items-center space-y-4 relative">
+          <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-300/30 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-300/30 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
+          
+          <div className="relative">
+            <div className="h-16 w-16 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-lg relative">
+              <div className="absolute inset-0 bg-indigo-500 rounded-3xl blur-md opacity-40 animate-pulse" />
+              <Flame className="w-8 h-8 text-white relative z-10 animate-pulse" />
+            </div>
+          </div>
+          <p className="text-sm font-bold text-slate-700 animate-pulse">Syncing Tracktion Session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Redirect unauthenticated users to login
+  if (!user) {
+    return (
+      <div className="flex bg-slate-900 justify-center items-center min-h-screen">
+        <div className="bg-slate-50/90 w-full max-w-md h-[100dvh] md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl border-4 border-slate-950 flex flex-col justify-between relative">
+          <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-300/30 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-300/30 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
+          
+          <AuthScreen />
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Render onboarding if user has not completed profile setup
+  if (isPendingOnboarding || !profile) {
     return (
       <div className="flex bg-slate-900 justify-center items-center min-h-screen">
         <div className="bg-slate-50/90 w-full max-w-md h-[100dvh] md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl border-4 border-slate-950 flex flex-col justify-between relative">
           
-          {/* Ambient background blur blobs */}
           <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-300/30 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-300/30 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
           
@@ -449,6 +608,32 @@ export default function App() {
           )}
         </AnimatePresence>
 
+        {/* Real-time error feedback toast */}
+        <AnimatePresence>
+          {errorMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -80 }}
+              animate={{ opacity: 1, y: 16 }}
+              exit={{ opacity: 0, y: -80 }}
+              className="absolute left-4 right-4 z-50 bg-rose-600 text-white rounded-2xl shadow-xl p-4 flex items-center justify-between gap-3.5 border border-rose-500"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-lg flex-shrink-0">⚠️</span>
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase font-extrabold tracking-wider text-rose-200 block">Database Notification</span>
+                  <p className="text-xs font-bold truncate text-white">{errorMessage}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setErrorMessage(null)} 
+                className="py-1 px-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white/90 hover:text-white transition-all text-[10px] font-extrabold uppercase tracking-wider flex-shrink-0"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Dynamic page sheet sliders */}
         <div className="flex-1 overflow-y-auto no-scrollbar relative">
           
@@ -459,11 +644,22 @@ export default function App() {
               {/* Premium Top Navigation header profile bar */}
               <div className="flex items-center justify-between pb-1">
                 <div className="flex items-center gap-2.5">
-                  <div className="h-11 w-11 bg-indigo-100 border-2 border-indigo-200 rounded-2xl flex items-center justify-center text-2xl shadow-xs">
-                    {profile.avatarSeed}
+                  <div className="h-11 w-11 bg-indigo-100 border-2 border-indigo-200 rounded-2xl flex items-center justify-center text-2xl shadow-xs overflow-hidden">
+                    {profile.avatarUrl ? (
+                      <img src={profile.avatarUrl} alt="User Portrait" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                    ) : (
+                      profile.avatarSeed
+                    )}
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide block">Traction State</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide">Traction State</span>
+                      {firestoreOffline && (
+                        <span className="inline-flex items-center gap-0.5 text-[8.5px] leading-none px-1.5 py-0.5 bg-amber-50 text-amber-700 font-black rounded-sm border border-amber-200/50 uppercase tracking-widest animate-pulse pointer-events-none">
+                          Cached
+                        </span>
+                      )}
+                    </div>
                     <h2 className="text-sm font-extrabold text-slate-800">
                       Hi, {profile.name}!
                     </h2>
@@ -605,7 +801,10 @@ export default function App() {
                     return (
                       <div
                         key={g.id}
-                        onClick={() => setSelectedGoal(g)}
+                        onClick={() => {
+                          setSelectedGoal(g);
+                          setActiveTab('quest');
+                        }}
                         className={`frosted-card p-4.5 rounded-3xl hover:border-indigo-300 hover:shadow-sm transition-all duration-300 cursor-pointer relative overflow-hidden group hover:scale-[1.01] ${
                           isDone ? 'ring-2 ring-emerald-500/20 bg-emerald-50/15' : ''
                         }`}
@@ -650,9 +849,11 @@ export default function App() {
                             <div className="mt-3 flex items-center justify-between gap-4">
                               <div className="flex-1">
                                 <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                  <div 
-                                    className={`h-full ${colorBgs[g.color] || 'bg-indigo-500'} transition-all duration-300`} 
-                                    style={{ width: `${pct}%` }}
+                                  <motion.div 
+                                    className={`h-full ${colorBgs[g.color] || 'bg-indigo-500'}`} 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${pct}%` }}
+                                    transition={{ type: "spring", stiffness: 80, damping: 15 }}
                                   />
                                 </div>
                               </div>
@@ -665,8 +866,19 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Quick checking visual target button */}
-                          <div className="flex items-center">
+                          {/* Share button and Quick checking visual action */}
+                          <div className="flex items-center gap-1.5 z-10" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSharingGoal(g);
+                              }}
+                              className="h-8 w-8 rounded-xl border border-slate-100 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 bg-white transition-all active:scale-90"
+                              title="Share progress"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                            </button>
+
                             {!isDone ? (
                               <button
                                 onClick={(e) => handleQuickComplete(e, g)}
@@ -699,6 +911,96 @@ export default function App() {
             </div>
           )}
 
+          {/* Goal Detail & Quest View screen */}
+          {activeTab === 'quest' && (
+            <div className="h-full flex flex-col bg-slate-50 relative">
+              {selectedGoal ? (
+                <div className="flex-1 h-full relative">
+                  <GoalDetail
+                    goal={selectedGoal}
+                    onClose={() => {
+                      setSelectedGoal(null);
+                      setActiveTab('targets');
+                    }}
+                    onUpdateProgress={handleUpdateProgress}
+                    onDeleteLog={handleDeleteLog}
+                    onEdit={(goal) => {
+                      setEditingGoal(goal);
+                      setIsCreatingGoal(true);
+                    }}
+                    onDeleteGoal={handleDeleteGoal}
+                    onShare={(goal) => setSharingGoal(goal)}
+                  />
+                </div>
+              ) : (
+                <div className="p-5 space-y-6 flex-1 overflow-y-auto no-scrollbar">
+                  <div className="pb-1 text-left">
+                    <span className="text-[10px] text-indigo-605 font-extrabold uppercase tracking-wider block">Quest Chronicles</span>
+                    <h2 className="text-xl font-extrabold text-slate-800">Select Active Goal</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Choose a goal to inspect its full progress trail, check-in activity history, and game-rank milestones.</p>
+                  </div>
+
+                  {goals.length === 0 ? (
+                    <div className="frosted-card p-8 rounded-3xl text-center space-y-3">
+                      <div className="h-12 w-12 rounded-2xl bg-indigo-50/50 text-indigo-500 flex items-center justify-center mx-auto">
+                        <Trophy className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-slate-800">No Active Goals Found</h4>
+                        <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                          Initialize a new quest pathway to get started on your gamified habit mastery.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingGoal(undefined);
+                          setIsCreatingGoal(true);
+                        }}
+                        className="py-2.5 px-4 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all cursor-pointer shadow-sm active:scale-95"
+                      >
+                        Create New Goal
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {goals.map((g) => {
+                        const pct = Math.min(100, Math.round((g.currentValue / g.targetValue) * 100));
+                        return (
+                          <div
+                            key={g.id}
+                            onClick={() => setSelectedGoal(g)}
+                            className="bg-white/70 hover:bg-white border border-slate-100 rounded-3xl p-4.5 transition-all duration-200 cursor-pointer shadow-3xs flex items-center justify-between group active:scale-[0.99] hover:border-indigo-100 relative overflow-hidden text-left"
+                          >
+                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                              <div className="p-3 rounded-2xl border flex items-center justify-center text-indigo-600 bg-indigo-50/40 border-indigo-100/50">
+                                <DynamicIcon name={g.icon} size={20} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-xs font-extrabold text-slate-800 truncate">{g.title}</h4>
+                                <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-400">
+                                  <span className="font-extrabold capitalize text-indigo-550">{g.frequency}</span>
+                                  <span>•</span>
+                                  <span>{g.currentValue} / {g.targetValue} {g.unit}</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-slate-100 rounded-full mt-2 overflow-hidden">
+                                  <div
+                                    style={{ width: `${pct}%` }}
+                                    className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-400 ml-2 group-hover:translate-x-0.5 transition-transform" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Aggregate analytics and statistics screen charts */}
           {activeTab === 'stats' && (
             <div className="p-5 space-y-6">
@@ -712,65 +1014,13 @@ export default function App() {
           )}
 
           {/* Account Profile Screen Settings */}
-          {activeTab === 'profile' && (
-            <div className="p-5 space-y-6">
-              <div className="pb-1">
-                <span className="text-[10px] text-indigo-600 font-extrabold uppercase tracking-wider block">Identity Manager</span>
-                <h2 className="text-xl font-extrabold text-slate-800">Account Profile</h2>
-              </div>
-
-              <div className="frosted-card p-5 rounded-3xl space-y-4 text-center">
-                <div className="h-20 w-20 bg-indigo-50 border-2 border-indigo-200 rounded-3xl flex items-center justify-center text-5xl shadow-sm mx-auto">
-                  {profile.avatarSeed}
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-800">{profile.name}</h3>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Committed tracktion master since {profile.joinedAt}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 pt-2 text-left">
-                  <div className="p-3 rounded-2xl bg-white/45 border border-white/50 shadow-xs">
-                    <span className="text-[9px] text-slate-400 font-extrabold uppercase">Total Habits Created</span>
-                    <p className="text-lg font-extrabold text-slate-800 mt-0.5">{goals.length}</p>
-                  </div>
-                  <div className="p-3 rounded-2xl bg-white/45 border border-white/50 shadow-xs">
-                    <span className="text-[9px] text-slate-400 font-extrabold uppercase">Streaks Achieved</span>
-                    <p className="text-lg font-extrabold text-slate-800 mt-0.5">{profile.stats.globalStreak} days</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action buttons panel */}
-              <div className="frosted-card p-5 rounded-3xl space-y-3.5">
-                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Traction Diagnostics</h4>
-                
-                <button
-                  onClick={handleLoadSampleData}
-                  className="w-full flex items-center justify-between p-3.5 text-xs text-indigo-700 hover:text-indigo-800 bg-indigo-50/25 active:bg-indigo-50/45 rounded-2xl transition-all border border-indigo-200/50 backdrop-blur-xs"
-                >
-                  <span className="font-bold flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4" /> Reset to Sarah Jenkins Record
-                  </span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={handleResetApp}
-                  className="w-full flex items-center justify-between p-3.5 text-xs text-rose-600 hover:text-rose-700 bg-rose-50/20 active:bg-rose-50/40 rounded-2xl transition-all border border-rose-200/25 backdrop-blur-xs"
-                >
-                  <span className="font-bold flex items-center gap-2">
-                    <LogOut className="w-4 h-4" /> Reset Application Workspace
-                  </span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Developer credits */}
-              <div className="text-center space-y-1 py-4">
-                <span className="text-[10px] text-indigo-500 font-extrabold uppercase tracking-widest block">Tracktion App v1.4.0</span>
-                <p className="text-[10px] text-slate-400 font-medium">Engineered for absolute client-side speed & integrity.</p>
-              </div>
-            </div>
+          {activeTab === 'profile' && profile && (
+            <ProfileSettings 
+              profile={profile} 
+              goals={goals} 
+              onResetApp={handleResetApp} 
+              onLoadSample={handleLoadSampleData} 
+            />
           )}
 
         </div>
@@ -794,7 +1044,7 @@ export default function App() {
           
           <button
             onClick={() => setActiveTab('targets')}
-            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all ${
+            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
               activeTab === 'targets' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
             }`}
           >
@@ -803,8 +1053,18 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setActiveTab('quest')}
+            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
+              activeTab === 'quest' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
+            }`}
+          >
+            <Trophy className="w-5 h-5" />
+            <span className="text-[9px] font-extrabold uppercase tracking-wide">Goal</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('stats')}
-            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all ${
+            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
               activeTab === 'stats' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
             }`}
           >
@@ -814,7 +1074,7 @@ export default function App() {
 
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all ${
+            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
               activeTab === 'profile' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
             }`}
           >
@@ -824,9 +1084,9 @@ export default function App() {
 
         </div>
 
-        {/* 1. Full detailed overlay view sheet */}
+        {/* 1. Full detailed overlay view sheet fallback */}
         <AnimatePresence>
-          {selectedGoal && (
+          {selectedGoal && activeTab !== 'quest' && (
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
@@ -844,6 +1104,7 @@ export default function App() {
                   setIsCreatingGoal(true);
                 }}
                 onDeleteGoal={handleDeleteGoal}
+                onShare={(goal) => setSharingGoal(goal)}
               />
             </motion.div>
           )}
@@ -868,6 +1129,16 @@ export default function App() {
                 editingGoal={editingGoal}
               />
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 3. Share Menu overlay dialog */}
+        <AnimatePresence>
+          {sharingGoal && (
+            <ShareModal
+              goal={sharingGoal}
+              onClose={() => setSharingGoal(null)}
+            />
           )}
         </AnimatePresence>
 

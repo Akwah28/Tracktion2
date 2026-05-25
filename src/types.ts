@@ -22,6 +22,9 @@ export interface Goal {
   color: string; // e.g. "emerald", "indigo", "rose", "amber", "violet"
   icon: string; // Lucide icon identifier
   logs: GoalProgressLog[];
+  deadline?: string; // YYYY-MM-DD
+  priority?: 'low' | 'medium' | 'high';
+  difficulty?: 'easy' | 'medium' | 'hard';
 }
 
 export interface UserStats {
@@ -33,7 +36,10 @@ export interface UserStats {
 export interface UserProfile {
   name: string;
   avatarSeed: string;
+  avatarUrl?: string;
   joinedAt: string;
   isOnboarded: boolean;
   stats: UserStats;
+  preferredCategory?: string;
+  weeklyGoalCount?: number;
 }

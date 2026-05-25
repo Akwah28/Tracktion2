@@ -62,6 +62,16 @@ const PRESET_GOALS = [
     icon: 'BookOpen',
   },
   {
+    title: 'Creative Sketching',
+    description: 'Doodle, brainstorm layout sketches, or practice writing.',
+    category: 'Creative',
+    targetValue: 20,
+    unit: 'mins',
+    frequency: 'daily',
+    color: 'violet',
+    icon: 'PenTool',
+  },
+  {
     title: 'Active Cardio',
     description: 'A brisk walk or high-intensity interval training.',
     category: 'Fitness',
@@ -78,7 +88,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [name, setName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('🦊');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedPresets, setSelectedPresets] = useState<number[]>([0, 1]); // default onboarding presets
+  const [selectedPresets, setSelectedPresets] = useState<number[]>([1, 2, 3]); // default selected presets: Wellness, Learning, Creative
 
   const toggleCategory = (catName: string) => {
     setSelectedCategories(prev => 

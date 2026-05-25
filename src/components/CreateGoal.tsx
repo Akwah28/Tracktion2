@@ -12,7 +12,10 @@ import {
   Plus,
   Minus,
   Check,
-  Award
+  Award,
+  Calendar,
+  AlertTriangle,
+  Gauge
 } from 'lucide-react';
 import { Goal, GoalFrequency } from '../types';
 import { CATEGORIES } from '../sampleData';
@@ -28,6 +31,9 @@ interface CreateGoalProps {
     frequency: GoalFrequency;
     color: string;
     icon: string;
+    deadline?: string;
+    priority?: 'low' | 'medium' | 'high';
+    difficulty?: 'easy' | 'medium' | 'hard';
   }) => void;
   onCancel: () => void;
   editingGoal?: Goal;
@@ -65,6 +71,11 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
   const [customUnit, setCustomUnit] = useState('');
   const [showCustomUnit, setShowCustomUnit] = useState(false);
 
+  // New Goal Fields
+  const [deadline, setDeadline] = useState('');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+
   // Load editing values if present
   useEffect(() => {
     if (editingGoal) {
@@ -76,6 +87,9 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
       setFrequency(editingGoal.frequency);
       setColor(editingGoal.color);
       setIcon(editingGoal.icon);
+      setDeadline(editingGoal.deadline || '');
+      setPriority(editingGoal.priority || 'medium');
+      setDifficulty(editingGoal.difficulty || 'medium');
       
       if (!PRESET_UNITS.includes(editingGoal.unit)) {
         setShowCustomUnit(true);
@@ -110,6 +124,10 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
       frequency,
       color,
       icon,
+      deadlineUrl: undefined, // ensure no extra mismatch keys
+      deadline: deadline || undefined,
+      priority,
+      difficulty,
     });
   };
 
@@ -359,6 +377,86 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
                   {f}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Target Milestone Specifications */}
+          <div className="frosted-card p-5 rounded-3xl space-y-4">
+            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Target Details & Milestones
+            </h4>
+
+            {/* Target Deadline */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" /> Goal Target Deadline
+              </label>
+              <input 
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full text-xs font-bold leading-none p-3.5 bg-white/45 hover:bg-white/60 focus:bg-white border border-slate-100 rounded-2xl text-slate-800 focus:outline-none transition-all focus:ring-1 focus:ring-indigo-55/20"
+              />
+            </div>
+
+            {/* Priority level */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-slate-400" /> Focus Priority
+              </label>
+              <div className="bg-white/20 border border-slate-100/55 rounded-2xl p-1 grid grid-cols-3 gap-1">
+                {(['low', 'medium', 'high'] as const).map((p) => {
+                  const isSel = priority === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriority(p)}
+                      className={`py-2 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                        isSel
+                          ? p === 'high' 
+                            ? 'bg-rose-600 text-white shadow-sm' 
+                            : p === 'medium'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-slate-700 text-white shadow-sm'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-white/40'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Difficulty rating */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block flex items-center gap-1.5">
+                <Gauge className="w-3.5 h-3.5 text-slate-400" /> Commitment Difficulty
+              </label>
+              <div className="bg-white/20 border border-slate-100/55 rounded-2xl p-1 grid grid-cols-3 gap-1">
+                {(['easy', 'medium', 'hard'] as const).map((d) => {
+                  const isSel = difficulty === d;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDifficulty(d)}
+                      className={`py-2 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                        isSel
+                          ? d === 'hard' 
+                            ? 'bg-amber-600 text-white shadow-sm' 
+                            : d === 'medium'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-500 hover:text-slate-850 hover:bg-white/40'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
