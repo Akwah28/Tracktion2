@@ -43,3 +43,13 @@ export interface UserProfile {
   preferredCategory?: string;
   weeklyGoalCount?: number;
 }
+
+export interface GoalTask {
+  id: string;
+  goalId: string; // ID of the linked goal
+  title: string;
+  completed: boolean;
+  value: number; // Increment added to goal's currentValue on completion
+  date: string; // Associated date (e.g., YYYY-MM-DD)
+  createdAt: string;
+}

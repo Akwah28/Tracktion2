@@ -29,8 +29,9 @@ import {
   Crown,
   Info
 } from 'lucide-react';
-import { Goal, GoalProgressLog } from '../types';
+import { Goal, GoalProgressLog, GoalTask } from '../types';
 import { DynamicIcon } from './DynamicIcon';
+import { GoalTaskManager } from './GoalTaskManager';
 
 interface GoalDetailProps {
   goal: Goal;
@@ -40,6 +41,11 @@ interface GoalDetailProps {
   onEdit: (goal: Goal) => void;
   onDeleteGoal: (goalId: string) => void;
   onShare?: (goal: Goal) => void;
+  tasks: GoalTask[];
+  onCreateTask: (taskData: { title: string; goalId: string; value: number }) => Promise<void>;
+  onToggleTask: (taskId: string) => Promise<void>;
+  onEditTask: (taskId: string, updatedData: { title: string; goalId: string; value: number }) => Promise<void>;
+  onDeleteTask: (taskId: string) => Promise<void>;
 }
 
 export const GoalDetail: React.FC<GoalDetailProps> = ({
@@ -50,6 +56,11 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
   onEdit,
   onDeleteGoal,
   onShare,
+  tasks,
+  onCreateTask,
+  onToggleTask,
+  onEditTask,
+  onDeleteTask,
 }) => {
   const [logValue, setLogValue] = useState<number>(1);
   const [logNote, setLogNote] = useState('');
@@ -436,6 +447,19 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
                   <p className="text-[9px] text-slate-400 mt-1 leading-tight">Achievement tiers verified on quest ledger.</p>
                 </div>
               </div>
+            </div>
+
+            {/* Daily tasks checklist for this specific goal pathway */}
+            <div className="frosted-card p-5 rounded-3xl space-y-4">
+              <GoalTaskManager
+                goals={[goal]}
+                tasks={tasks}
+                onCreateTask={onCreateTask}
+                onToggleTask={onToggleTask}
+                onEditTask={onEditTask}
+                onDeleteTask={onDeleteTask}
+                filterByGoalId={goal.id}
+              />
             </div>
 
             {/* Daily increment activity logger */}

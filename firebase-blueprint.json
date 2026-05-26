@@ -81,6 +81,35 @@
         }
       },
       "required": ["id", "title", "category", "targetValue", "currentValue", "unit", "frequency", "streak", "createdAt", "color", "icon", "logs"]
+    },
+    "GoalTask": {
+      "title": "GoalTask",
+      "description": "Daily sub-task or checklist action associated with a goal",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "goalId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        },
+        "date": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "goalId", "title", "completed", "value", "date", "createdAt"]
     }
   },
   "firestore": {
@@ -91,6 +120,10 @@
     "users/{userId}/goals/{goalId}": {
       "schema": "Goal",
       "description": "Collections of goals tracked by a specific user"
+    },
+    "users/{userId}/tasks/{taskId}": {
+      "schema": "GoalTask",
+      "description": "Daily checklists and sub-goals assigned to a specific user"
     }
   }
 }

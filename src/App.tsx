@@ -21,9 +21,10 @@ import {
   CheckCircle2,
   Filter,
   Share2,
-  Trophy
+  Trophy,
+  Bell
 } from 'lucide-react';
-import { Goal, UserProfile, GoalFrequency } from './types';
+import { Goal, UserProfile, GoalFrequency, GoalTask } from './types';
 import { CATEGORIES, INITIAL_GOALS } from './sampleData';
 import Onboarding from './components/Onboarding';
 import CreateGoal from './components/CreateGoal';
@@ -32,6 +33,9 @@ import StatsDashboard from './components/StatsDashboard';
 import DynamicIcon from './components/DynamicIcon';
 import ShareModal from './components/ShareModal';
 import ProfileSettings from './components/ProfileSettings';
+import { GoalTaskManager } from './components/GoalTaskManager';
+import { StreakTrackingEngine } from './components/StreakTrackingEngine';
+import { NotificationCenter } from './components/NotificationCenter';
 import { useAuth } from './context/AuthContext';
 import AuthScreen from './components/AuthScreen';
 import { db, handleFirestoreError, OperationType } from './firebase';
@@ -43,11 +47,15 @@ export default function App() {
   // Load states synced dynamically with Firestore
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [tasks, setTasks] = useState<GoalTask[]>([]);
   const [isPendingOnboarding, setIsPendingOnboarding] = useState(false);
   const [firestoreOffline, setFirestoreOffline] = useState(false);
 
   // Navigation states
   const [activeTab, setActiveTab] = useState<'targets' | 'quest' | 'stats' | 'profile'>('targets');
+  const [statsSubTab, setStatsSubTab] = useState<'analytics' | 'streaks'>('streaks');
+  const [streakEvaluated, setStreakEvaluated] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   
   // Selection / Modal states
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
@@ -127,6 +135,7 @@ export default function App() {
       setProfile(null);
       setGoals([]);
       setIsPendingOnboarding(false);
+      setStreakEvaluated(false);
       return;
     }
 
@@ -164,9 +173,27 @@ export default function App() {
       }
     );
 
+    // Dynamic subscription to daily Tasks list
+    const unsubscribeTasks = onSnapshot(
+      collection(db, 'users', user.uid, 'tasks'),
+      (snapshot) => {
+        const list: GoalTask[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as GoalTask);
+        });
+        // Sort tasks by createdAt descending
+        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setTasks(list);
+      },
+      (error) => {
+        triggerError(error, OperationType.LIST, `users/${user.uid}/tasks`);
+      }
+    );
+
     return () => {
       unsubscribeProfile();
       unsubscribeGoals();
+      unsubscribeTasks();
     };
   }, [user]);
 
@@ -177,6 +204,62 @@ export default function App() {
     d.setDate(d.getDate() - 1);
     return d.toISOString().split('T')[0];
   };
+
+  // Intelligent Streak Evaluator & Consistency Tracking Engine
+  useEffect(() => {
+    if (!user || !profile || streakEvaluated) return;
+
+    const today = getTodayStr();
+    const yesterday = getYesterdayStr();
+    
+    const history = profile.stats.streakHistory || [];
+    const hasToday = history.includes(today);
+    const hasYesterday = history.includes(yesterday);
+    
+    const currentStoredStreak = profile.stats.globalStreak || 0;
+    
+    let recalculatedStreak = 0;
+    if (hasToday || hasYesterday) {
+      const activeStartStr = hasToday ? today : yesterday;
+      let checkDate = new Date(activeStartStr);
+      let continuous = true;
+      let iterations = 0; // Guard against infinite loop scenarios
+      
+      while (continuous && iterations < 1000) {
+        iterations++;
+        const checkStr = checkDate.toISOString().split('T')[0];
+        if (history.includes(checkStr)) {
+          recalculatedStreak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          continuous = false;
+        }
+      }
+    }
+
+    // Sync stale/broke streaks instantly with database for accuracy!
+    if (recalculatedStreak !== currentStoredStreak) {
+      const updatedProfile: UserProfile = {
+        ...profile,
+        stats: {
+          ...profile.stats,
+          globalStreak: recalculatedStreak,
+          lastActiveDate: recalculatedStreak > 0 ? (hasToday ? today : yesterday) : (profile.stats.lastActiveDate || '')
+        }
+      };
+      
+      setDoc(doc(db, 'users', user.uid), updatedProfile)
+        .then(() => {
+          setStreakEvaluated(true);
+        })
+        .catch((err) => {
+          triggerError(err, OperationType.WRITE, `users/${user.uid}`);
+          setStreakEvaluated(true);
+        });
+    } else {
+      setStreakEvaluated(true);
+    }
+  }, [user, profile, streakEvaluated]);
 
   // Complete onboarding workflow callback
   const handleOnboardingComplete = async (newProfile: UserProfile, initialGoals: Goal[]) => {
@@ -274,6 +357,100 @@ export default function App() {
       }
     } catch (error) {
       triggerError(error, OperationType.DELETE, `users/${user.uid}/goals/${goalId}`);
+    }
+  };
+
+  // Create task for goal
+  const handleCreateTask = async (taskData: { title: string; goalId: string; value: number }) => {
+    if (!user) return;
+    const today = getTodayStr();
+    const id = `task-${Date.now()}`;
+    const newTask: GoalTask = {
+      id,
+      goalId: taskData.goalId,
+      title: taskData.title,
+      completed: false,
+      value: taskData.value,
+      date: today,
+      createdAt: new Date().toISOString()
+    };
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'tasks', id), newTask);
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}/tasks/${id}`);
+    }
+  };
+
+  // Toggle task completion (this automatically updates connected goal progress)
+  const handleToggleTask = async (taskId: string) => {
+    if (!user) return;
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const newCompleted = !task.completed;
+    try {
+      // 1. Update task in Firestore
+      await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), {
+        ...task,
+        completed: newCompleted
+      });
+
+      // 2. Automatically update matched goal's value
+      if (task.goalId) {
+        const increment = newCompleted ? task.value : -task.value;
+        const actionNote = newCompleted 
+          ? `Completed task checklist: ${task.title}` 
+          : `Unchecked task checklist: ${task.title}`;
+        await handleUpdateProgress(task.goalId, increment, actionNote);
+      }
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}/tasks/${taskId}`);
+    }
+  };
+
+  // Edit existing task
+  const handleEditTask = async (taskId: string, updatedData: { title: string; goalId: string; value: number }) => {
+    if (!user) return;
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    try {
+      if (task.completed && task.goalId) {
+        // undo old value first
+        await handleUpdateProgress(task.goalId, -task.value, `Task updated (value adjustment undo: ${task.title})`);
+      }
+
+      const updatedTask = {
+        ...task,
+        title: updatedData.title,
+        goalId: updatedData.goalId,
+        value: updatedData.value
+      };
+
+      await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), updatedTask);
+
+      if (task.completed && updatedData.goalId) {
+        // reapply new value
+        await handleUpdateProgress(updatedData.goalId, updatedData.value, `Task updated (value adjustment apply: ${updatedData.title})`);
+      }
+    } catch (error) {
+      triggerError(error, OperationType.WRITE, `users/${user.uid}/tasks/${taskId}`);
+    }
+  };
+
+  // Delete task complete (this handles automatically stripping completion progress values)
+  const handleDeleteTask = async (taskId: string) => {
+    if (!user) return;
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    try {
+      if (task.completed && task.goalId) {
+        await handleUpdateProgress(task.goalId, -task.value, `Deleted completed task checklist: ${task.title}`);
+      }
+      await deleteDoc(doc(db, 'users', user.uid, 'tasks', taskId));
+    } catch (error) {
+      triggerError(error, OperationType.DELETE, `users/${user.uid}/tasks/${taskId}`);
     }
   };
 
@@ -486,6 +663,26 @@ export default function App() {
 
 
   // Filter list values
+  const notificationAlertsCount = useMemo(() => {
+    if (!profile) return 0;
+    const todayStr = getTodayStr();
+    const hasTodayCheck = profile.stats.streakHistory?.includes(todayStr) || false;
+    const activeStreak = profile.stats.globalStreak || 0;
+    const hasStreakAlert = !hasTodayCheck && activeStreak > 0;
+
+    const unfinishedTasksCount = tasks.filter(t => !t.completed && t.date === todayStr).length;
+
+    let lowProgressCount = 0;
+    goals.forEach(goal => {
+      const progressPercent = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
+      if (progressPercent < 50) {
+        lowProgressCount++;
+      }
+    });
+
+    return (hasStreakAlert ? 1 : 0) + (unfinishedTasksCount > 0 ? 1 : 0) + lowProgressCount + 1;
+  }, [profile, tasks, goals]);
+
   const filteredGoals = useMemo(() => {
     return goals.filter(g => {
       const matchSearch = g.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -581,7 +778,7 @@ export default function App() {
   return (
     <div className="flex bg-slate-900 justify-center items-center min-h-screen font-sans">
       {/* Visual device wrapper bounding container */}
-      <div className="bg-slate-50/90 w-full max-w-md h-[100dvh] md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl relative flex flex-col justify-between border-4 border-slate-950">
+      <div className="bg-slate-50/90 w-full h-[100dvh] md:max-w-md md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl relative flex flex-col justify-between md:border-4 md:border-slate-950">
         
         {/* Ambient background blur blobs */}
         <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-200/45 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
@@ -639,7 +836,13 @@ export default function App() {
           
           {/* Main targets lists dashboard */}
           {activeTab === 'targets' && (
-            <div className="p-5 space-y-6">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.99, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.99, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeInOut" }}
+              className="p-5 space-y-6"
+            >
               
               {/* Premium Top Navigation header profile bar */}
               <div className="flex items-center justify-between pb-1">
@@ -666,12 +869,25 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Main collective user global streak */}
-                <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-100 rounded-full py-1.5 px-3.5 shadow-xs">
-                  <Flame className="w-4 h-4 text-orange-500 fill-orange-500 animate-pulse" />
-                  <span className="text-xs font-extrabold text-orange-700">
-                    {profile.stats.globalStreak} <span className="text-[10px] font-bold text-orange-600">Streak</span>
-                  </span>
+                {/* Main collective user global streak with companion Notification Bell */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsNotificationsOpen(true)}
+                    className="h-9 w-9 bg-white border border-slate-200/60 rounded-xl flex items-center justify-center text-slate-550 hover:text-slate-800 transition-all cursor-pointer relative shadow-3xs active:scale-95"
+                    title="Open reminders and encouragements"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {notificationAlertsCount > 1 && (
+                      <span className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-rose-500 border-2 border-white rounded-full flex items-center justify-center text-[7.5px] text-white font-extrabold" />
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-1 bg-orange-50 border border-orange-100 rounded-full py-1.5 px-3 shadow-xs">
+                    <Flame className="w-4 h-4 text-orange-500 fill-orange-500 animate-pulse" />
+                    <span className="text-xs font-extrabold text-orange-700">
+                      {profile.stats.globalStreak}<span className="text-[9px] font-bold text-orange-600">d</span>
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -908,12 +1124,18 @@ export default function App() {
                   })
                 )}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Goal Detail & Quest View screen */}
           {activeTab === 'quest' && (
-            <div className="h-full flex flex-col bg-slate-50 relative">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.99, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.99, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeInOut" }}
+              className="h-full flex flex-col bg-slate-50 relative"
+            >
               {selectedGoal ? (
                 <div className="flex-1 h-full relative">
                   <GoalDetail
@@ -930,15 +1152,41 @@ export default function App() {
                     }}
                     onDeleteGoal={handleDeleteGoal}
                     onShare={(goal) => setSharingGoal(goal)}
+                    tasks={tasks}
+                    onCreateTask={handleCreateTask}
+                    onToggleTask={handleToggleTask}
+                    onEditTask={handleEditTask}
+                    onDeleteTask={handleDeleteTask}
                   />
                 </div>
               ) : (
-                <div className="p-5 space-y-6 flex-1 overflow-y-auto no-scrollbar">
-                  <div className="pb-1 text-left">
+                <div className="p-5 space-y-6 flex-1 overflow-y-auto no-scrollbar pb-24">
+                  <div className="pb-1 text-left text-slate-800">
                     <span className="text-[10px] text-indigo-605 font-extrabold uppercase tracking-wider block">Quest Chronicles</span>
-                    <h2 className="text-xl font-extrabold text-slate-800">Select Active Goal</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Choose a goal to inspect its full progress trail, check-in activity history, and game-rank milestones.</p>
+                    <h2 className="text-xl font-extrabold text-slate-800">Daily Quest Hub</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Manage custom checklist tasks or select an active pathway below to view progress trails and ranks.</p>
                   </div>
+
+                  {/* Daily task command center */}
+                  <div className="frosted-card p-5 rounded-3xl bg-white/45 border border-slate-100/70 shadow-3xs text-left">
+                    <GoalTaskManager
+                      goals={goals}
+                      tasks={tasks}
+                      onCreateTask={handleCreateTask}
+                      onToggleTask={handleToggleTask}
+                      onEditTask={handleEditTask}
+                      onDeleteTask={handleDeleteTask}
+                    />
+                  </div>
+
+                  {/* Active pathways header */}
+                  {goals.length > 0 && (
+                    <div className="text-left pt-2 border-t border-slate-100/50">
+                      <h4 className="text-[11px] font-black text-slate-450 uppercase tracking-widest">
+                        🎯 Undergoing Habit Pathways
+                      </h4>
+                    </div>
+                  )}
 
                   {goals.length === 0 ? (
                     <div className="frosted-card p-8 rounded-3xl text-center space-y-3">
@@ -998,29 +1246,73 @@ export default function App() {
                   )}
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
 
           {/* Aggregate analytics and statistics screen charts */}
           {activeTab === 'stats' && (
-            <div className="p-5 space-y-6">
-              <div className="pb-1">
-                <span className="text-[10px] text-indigo-600 font-extrabold uppercase tracking-wider block">Intelligence Suite</span>
-                <h2 className="text-xl font-extrabold text-slate-800">Consistency Analytics</h2>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.99, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.99, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeInOut" }}
+              className="p-5 space-y-6 pb-24"
+            >
+              <div className="pb-1 text-left flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-indigo-600 font-extrabold uppercase tracking-wider block">Intelligence Suite</span>
+                  <h2 className="text-xl font-extrabold text-slate-800">Tracktion Engine</h2>
+                </div>
+                
+                {/* Custom Subtab Slider selector */}
+                <div className="inline-flex bg-slate-100 p-1.5 rounded-2xl h-[38px] border border-slate-200/50">
+                  <button
+                    onClick={() => setStatsSubTab('streaks')}
+                    className={`px-3 py-1 flex items-center gap-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                      statsSubTab === 'streaks'
+                        ? 'bg-white text-indigo-600 shadow-3xs border border-indigo-100/50'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <Flame className="w-3.5 h-3.5" /> Streaks
+                  </button>
+                  <button
+                    onClick={() => setStatsSubTab('analytics')}
+                    className={`px-3 py-1 flex items-center gap-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                      statsSubTab === 'analytics'
+                        ? 'bg-white text-indigo-600 shadow-3xs border border-indigo-100/50'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <TrendingUp className="w-3.5 h-3.5" /> Analytics
+                  </button>
+                </div>
               </div>
 
-              <StatsDashboard goals={goals} profile={profile} />
-            </div>
+              {statsSubTab === 'streaks' && profile ? (
+                <StreakTrackingEngine goals={goals} profile={profile} />
+              ) : (
+                profile && <StatsDashboard goals={goals} profile={profile} tasks={tasks} />
+              )}
+            </motion.div>
           )}
 
           {/* Account Profile Screen Settings */}
           {activeTab === 'profile' && profile && (
-            <ProfileSettings 
-              profile={profile} 
-              goals={goals} 
-              onResetApp={handleResetApp} 
-              onLoadSample={handleLoadSampleData} 
-            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.99, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.99, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeInOut" }}
+              className="pb-24"
+            >
+              <ProfileSettings 
+                profile={profile} 
+                goals={goals} 
+                onResetApp={handleResetApp} 
+                onLoadSample={handleLoadSampleData} 
+              />
+            </motion.div>
           )}
 
         </div>
@@ -1040,46 +1332,54 @@ export default function App() {
         )}
 
         {/* Bottom tab bar mobile navigation */}
-        <div className="h-[72px] bg-white/45 backdrop-blur-lg border-t border-white/60 flex items-center justify-around px-2 z-10">
+        <div className="pb-[max(12px,env(safe-area-inset-bottom,20px))] pt-3 bg-white/45 backdrop-blur-lg border-t border-white/60 flex items-center justify-around px-3 z-10 w-full">
           
           <button
             onClick={() => setActiveTab('targets')}
-            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
-              activeTab === 'targets' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
+            className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
+              activeTab === 'targets' 
+                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-650'
             }`}
           >
             <Target className="w-5 h-5" />
-            <span className="text-[9px] font-extrabold uppercase tracking-wide">Targets</span>
+            <span className="text-[9.5px] font-black uppercase tracking-wider block mt-0.5">Targets</span>
           </button>
 
           <button
             onClick={() => setActiveTab('quest')}
-            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
-              activeTab === 'quest' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
+            className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
+              activeTab === 'quest' 
+                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-650'
             }`}
           >
             <Trophy className="w-5 h-5" />
-            <span className="text-[9px] font-extrabold uppercase tracking-wide">Goal</span>
+            <span className="text-[9.5px] font-black uppercase tracking-wider block mt-0.5">Goal</span>
           </button>
 
           <button
             onClick={() => setActiveTab('stats')}
-            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
-              activeTab === 'stats' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
+            className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
+              activeTab === 'stats' 
+                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-655'
             }`}
           >
             <TrendingUp className="w-5 h-5" />
-            <span className="text-[9px] font-extrabold uppercase tracking-wide">Stats</span>
+            <span className="text-[9.5px] font-black uppercase tracking-wider block mt-0.5">Stats</span>
           </button>
 
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center gap-1 py-1.5 px-4.5 rounded-2xl transition-all cursor-pointer ${
-              activeTab === 'profile' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-700'
+            className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
+              activeTab === 'profile' 
+                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-655'
             }`}
           >
             <User className="w-5 h-5" />
-            <span className="text-[9px] font-extrabold uppercase tracking-wide">Profile</span>
+            <span className="text-[9.5px] font-black uppercase tracking-wider block mt-0.5">Profile</span>
           </button>
 
         </div>
@@ -1105,6 +1405,11 @@ export default function App() {
                 }}
                 onDeleteGoal={handleDeleteGoal}
                 onShare={(goal) => setSharingGoal(goal)}
+                tasks={tasks}
+                onCreateTask={handleCreateTask}
+                onToggleTask={handleToggleTask}
+                onEditTask={handleEditTask}
+                onDeleteTask={handleDeleteTask}
               />
             </motion.div>
           )}
@@ -1139,6 +1444,34 @@ export default function App() {
               goal={sharingGoal}
               onClose={() => setSharingGoal(null)}
             />
+          )}
+        </AnimatePresence>
+
+        {/* 4. Smart Reminders and Companion Notification Center Drawer */}
+        <AnimatePresence>
+          {isNotificationsOpen && profile && (
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="absolute inset-0 bg-slate-50 z-50"
+            >
+              <NotificationCenter
+                profile={profile}
+                goals={goals}
+                tasks={tasks}
+                onClose={() => setIsNotificationsOpen(false)}
+                onNavigateToQuest={() => {
+                  setIsNotificationsOpen(false);
+                  setActiveTab('quest');
+                }}
+                onNavigateToTargets={() => {
+                  setIsNotificationsOpen(false);
+                  setActiveTab('targets');
+                }}
+              />
+            </motion.div>
           )}
         </AnimatePresence>
 
