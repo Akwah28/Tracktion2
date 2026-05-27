@@ -241,7 +241,7 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
     <div className="flex flex-col h-full bg-transparent relative z-10">
       
       {/* 1. Header Sticky panel */}
-      <div className="flex items-center justify-between px-5 py-4 bg-white/45 backdrop-blur-md border-b border-white/50 sticky top-0 z-10 shadow-xs">
+      <div className="flex items-center justify-between px-5 py-4 bg-white border-b border-slate-100 sticky top-0 z-10 shadow-3xs">
         <button 
           onClick={onClose}
           className="p-1.5 hover:bg-slate-150 rounded-full text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
@@ -760,12 +760,12 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
       {/* Delete Confirmation Overlay Sheet */}
       <AnimatePresence>
         {confirmDelete && (
-          <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-md z-30 flex items-end">
+          <div className="absolute inset-0 bg-slate-950/70 z-30 flex items-end">
             <motion.div
               initial={{ y: 220 }}
               animate={{ y: 0 }}
               exit={{ y: 220 }}
-              className="frosted-card bg-white/95 backdrop-blur-xl w-full rounded-t-3xl p-6 space-y-4 shadow-2xl border-t border-white/60"
+              className="bg-white w-full rounded-t-3xl p-6 space-y-4 shadow-2xl border-t border-slate-200/60 isolation-isolate"
             >
               <h3 className="text-base font-black text-slate-900">Abandon Quest?</h3>
               <p className="text-xs text-slate-500 leading-relaxed font-semibold">

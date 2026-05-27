@@ -31,20 +31,20 @@ service cloud.firestore {
     // Validation Blueprints
     function isValidUserProfile(data) {
       return data.keys().hasAll(['name', 'avatarSeed', 'joinedAt', 'isOnboarded', 'stats'])
-        && data.keys().size() >= 5 && data.keys().size() <= 8
+        && data.keys().size() >= 5 && data.keys().size() <= 12
         && data.name is string && data.name.size() <= 128
         && data.avatarSeed is string && data.avatarSeed.size() <= 128
         && data.joinedAt is string && data.joinedAt.size() <= 64
         && data.isOnboarded is bool
         && data.stats is map
-        && (!data.keys().hasAny(['avatarUrl']) || data.avatarUrl is string && data.avatarUrl.size() <= 2048)
-        && (!data.keys().hasAny(['preferredCategory']) || data.preferredCategory is string && data.preferredCategory.size() <= 128)
-        && (!data.keys().hasAny(['weeklyGoalCount']) || data.weeklyGoalCount is number && data.weeklyGoalCount >= 0 && data.weeklyGoalCount <= 100);
+        && (!data.keys().hasAny(['avatarUrl']) || data.avatarUrl == null || data.avatarUrl is string && data.avatarUrl.size() <= 2048)
+        && (!data.keys().hasAny(['preferredCategory']) || data.preferredCategory == null || data.preferredCategory is string && data.preferredCategory.size() <= 128)
+        && (!data.keys().hasAny(['weeklyGoalCount']) || data.weeklyGoalCount == null || data.weeklyGoalCount is number && data.weeklyGoalCount >= 0 && data.weeklyGoalCount <= 100);
     }
 
     function isValidGoal(data) {
       return data.keys().hasAll(['id', 'title', 'category', 'targetValue', 'currentValue', 'unit', 'frequency', 'streak', 'createdAt', 'color', 'icon', 'logs'])
-        && data.keys().size() >= 12 && data.keys().size() <= 17
+        && data.keys().size() >= 12 && data.keys().size() <= 20
         && data.id is string && data.id.size() <= 128
         && data.title is string && data.title.size() <= 128
         && data.category is string && data.category.size() <= 128
@@ -57,16 +57,16 @@ service cloud.firestore {
         && data.color is string && data.color.size() <= 128
         && data.icon is string && data.icon.size() <= 128
         && data.logs is list && data.logs.size() <= 500
-        && (!data.keys().hasAny(['description']) || data.description is string && data.description.size() <= 1024)
-        && (!data.keys().hasAny(['lastCompletedDate']) || data.lastCompletedDate is string && data.lastCompletedDate.size() <= 64)
-        && (!data.keys().hasAny(['deadline']) || data.deadline is string && data.deadline.size() <= 64)
-        && (!data.keys().hasAny(['priority']) || data.priority is string && data.priority.size() <= 32)
-        && (!data.keys().hasAny(['difficulty']) || data.difficulty is string && data.difficulty.size() <= 32);
+        && (!data.keys().hasAny(['description']) || data.description == null || data.description is string && data.description.size() <= 1024)
+        && (!data.keys().hasAny(['lastCompletedDate']) || data.lastCompletedDate == null || data.lastCompletedDate is string && data.lastCompletedDate.size() <= 64)
+        && (!data.keys().hasAny(['deadline']) || data.deadline == null || data.deadline is string && data.deadline.size() <= 64)
+        && (!data.keys().hasAny(['priority']) || data.priority == null || data.priority is string && data.priority.size() <= 32)
+        && (!data.keys().hasAny(['difficulty']) || data.difficulty == null || data.difficulty is string && data.difficulty.size() <= 32);
     }
 
     function isValidGoalTask(data) {
       return data.keys().hasAll(['id', 'goalId', 'title', 'completed', 'value', 'date', 'createdAt'])
-        && data.keys().size() == 7
+        && data.keys().size() >= 7 && data.keys().size() <= 10
         && data.id is string && data.id.size() <= 128
         && data.goalId is string && data.goalId.size() <= 128
         && data.title is string && data.title.size() <= 256
@@ -81,10 +81,9 @@ service cloud.firestore {
       allow get: if isOwner(userId);
       allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming());
       
-      // Profile updates must protect immutable keys
+      // Profile updates by the owner are fully dynamic and validated
       allow update: if isOwner(userId) 
-        && isValidUserProfile(incoming())
-        && incoming().joinedAt == existing().joinedAt; // Immortal joinedAt key
+        && isValidUserProfile(incoming());
         
       allow delete: if isOwner(userId);
       

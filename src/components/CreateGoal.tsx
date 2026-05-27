@@ -142,7 +142,7 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
   return (
     <div className="flex flex-col h-full bg-transparent relative z-10">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 bg-white/45 backdrop-blur-md border-b border-white/50 sticky top-0 z-10 shadow-xs">
+      <div className="flex items-center justify-between px-5 py-4 bg-white border-b border-slate-100 sticky top-0 z-10 shadow-3xs">
         <button 
           onClick={onCancel}
           className="p-1.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-600"
@@ -516,7 +516,7 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
       </div>
 
       {/* Persistent save footer button to look highly visual */}
-      <div className="p-4 bg-white/45 backdrop-blur-md border-t border-white/60">
+      <div className="p-4 bg-white border-t border-slate-100">
         <button
           onClick={handleSubmit}
           disabled={!title.trim() || targetValue <= 0}

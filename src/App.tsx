@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Flame, 
@@ -50,6 +50,71 @@ export default function App() {
   const [tasks, setTasks] = useState<GoalTask[]>([]);
   const [isPendingOnboarding, setIsPendingOnboarding] = useState(false);
   const [firestoreOffline, setFirestoreOffline] = useState(false);
+
+  // Sarah Jenkins preview backup states
+  const [sarahPreviewTimeLeft, setSarahPreviewTimeLeft] = useState<number | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const backupRef = useRef<{ profile: UserProfile | null; goals: Goal[]; tasks: GoalTask[] } | null>(null);
+
+  const handleRestoreOwnRecord = async () => {
+    if (!user || !backupRef.current || isRestoring) {
+      setSarahPreviewTimeLeft(null);
+      return;
+    }
+    
+    // Clear countdown timer and extract backup immediately to prevent subsequent or concurrent re-entrant runs
+    setSarahPreviewTimeLeft(null);
+    const backup = backupRef.current;
+    backupRef.current = null;
+
+    try {
+      setIsRestoring(true);
+      
+      const currentGoals = [...goals];
+      const currentTasks = [...tasks];
+      
+      // 1) Write back the backed-up profile
+      if (backup.profile) {
+        await setDoc(doc(db, 'users', user.uid), backup.profile);
+      } else {
+        await deleteDoc(doc(db, 'users', user.uid));
+      }
+      
+      // 2) Delete active Sarah goals and write back backed-up goals
+      for (const g of currentGoals) {
+        await deleteDoc(doc(db, 'users', user.uid, 'goals', g.id));
+      }
+      for (const g of backup.goals) {
+        await setDoc(doc(db, 'users', user.uid, 'goals', g.id), g);
+      }
+      
+      // 3) Delete active Sarah tasks and write back backed-up tasks
+      for (const t of currentTasks) {
+        await deleteDoc(doc(db, 'users', user.uid, 'tasks', t.id));
+      }
+      for (const t of backup.tasks) {
+        await setDoc(doc(db, 'users', user.uid, 'tasks', t.id), t);
+      }
+      
+    } catch (error) {
+      console.error("Error restoring own record:", error);
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  // Countdown timer for restoring user back up after previewing Sarah's record
+  useEffect(() => {
+    if (sarahPreviewTimeLeft === null) return;
+    if (sarahPreviewTimeLeft <= 0) {
+      handleRestoreOwnRecord();
+      return;
+    }
+    const interval = setInterval(() => {
+      setSarahPreviewTimeLeft(prev => prev !== null ? prev - 1 : null);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sarahPreviewTimeLeft, goals, tasks, user]);
 
   // Navigation states
   const [activeTab, setActiveTab] = useState<'targets' | 'quest' | 'stats' | 'profile'>('targets');
@@ -607,6 +672,16 @@ export default function App() {
   // Reset demo profile setup to sample placeholder data
   const handleLoadSampleData = async () => {
     if (!user) return;
+
+    // Capture user profile, goals, and tasks in state memory if no backup has been taken yet
+    if (!backupRef.current) {
+      backupRef.current = {
+        profile: profile ? JSON.parse(JSON.stringify(profile)) : null,
+        goals: JSON.parse(JSON.stringify(goals)),
+        tasks: JSON.parse(JSON.stringify(tasks))
+      };
+    }
+
     const demoProfile: UserProfile = {
       name: 'Sarah Jenkins',
       avatarSeed: '🦊',
@@ -639,6 +714,9 @@ export default function App() {
       setActiveTab('targets');
       setSelectedGoal(null);
       setIsCreatingGoal(false);
+
+      // Start the 30 seconds automatic reversion countdown
+      setSarahPreviewTimeLeft(30);
     } catch (error) {
       triggerError(error, OperationType.WRITE, `users/${user.uid}`);
     }
@@ -652,12 +730,30 @@ export default function App() {
   }
 
   const handleResetApp = async () => {
+    if (!user) return;
     try {
-      await logout();
+      setSarahPreviewTimeLeft(null);
+      backupRef.current = null;
+
+      // 1. Delete all user goals from Firestore
+      for (const g of goals) {
+        await deleteDoc(doc(db, 'users', user.uid, 'goals', g.id));
+      }
+
+      // 2. Delete all user tasks from Firestore
+      for (const t of tasks) {
+        await deleteDoc(doc(db, 'users', user.uid, 'tasks', t.id));
+      }
+
+      // 3. Delete user profile document (onSnapshot will detect this, set profile to null, and open onboarding)
+      await deleteDoc(doc(db, 'users', user.uid));
+
       setSelectedGoal(null);
       setIsCreatingGoal(false);
+      setActiveTab('targets');
     } catch (error) {
-      console.error("Failed to sign out:", error);
+      console.error("Failed to reset application workspace:", error);
+      triggerError(error, OperationType.DELETE, `users/${user.uid}`);
     }
   };
 
@@ -801,6 +897,39 @@ export default function App() {
                 <h4 className="text-xs font-bold truncate">"{celebrationGoal}" completed!</h4>
               </div>
               <span className="text-lg">🔥</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Sarah Jenkins sample active preview countdown banner */}
+        <AnimatePresence>
+          {sarahPreviewTimeLeft !== null && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -20 }}
+              animate={{ opacity: 1, scale: 1, y: 16 }}
+              exit={{ opacity: 0, scale: 0.95, y: -20 }}
+              className="absolute left-4 right-4 z-40 bg-indigo-900/95 backdrop-blur-md text-white rounded-2xl shadow-xl p-3.5 flex items-center justify-between gap-3 border border-indigo-700/80"
+              id="sarah-preview-banner"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-8 w-8 bg-indigo-800 rounded-lg flex items-center justify-center animate-spin-slow">
+                  <RefreshCw className="w-4 h-4 text-indigo-300" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[9px] uppercase font-black tracking-widest text-indigo-300 block">Previewing Sarah's Record</span>
+                  <p className="text-[10.5px] font-semibold text-slate-100 truncate">
+                    Reverting to your record in <span className="text-amber-400 font-extrabold">{sarahPreviewTimeLeft}s</span>
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                onClick={handleRestoreOwnRecord}
+                disabled={isRestoring}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-[9.5px] font-black uppercase tracking-wider rounded-xl transition-all border border-indigo-400/30 flex-shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                {isRestoring ? 'Restoring...' : 'Restore Now'}
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1332,7 +1461,7 @@ export default function App() {
         )}
 
         {/* Bottom tab bar mobile navigation */}
-        <div className="pb-[max(12px,env(safe-area-inset-bottom,20px))] pt-3 bg-white/45 backdrop-blur-lg border-t border-white/60 flex items-center justify-around px-3 z-10 w-full">
+        <div className="pb-[max(12px,env(safe-area-inset-bottom,20px))] pt-3 bg-white/95 border-t border-slate-200/50 flex items-center justify-around px-3 z-10 w-full shadow-sm">
           
           <button
             onClick={() => setActiveTab('targets')}
