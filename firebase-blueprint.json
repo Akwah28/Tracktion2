@@ -110,6 +110,41 @@
         }
       },
       "required": ["id", "goalId", "title", "completed", "value", "date", "createdAt"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Daily reflection thoughts, mood log, productivity track, and lessons learned",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "mood": {
+          "type": "string"
+        },
+        "productivity": {
+          "type": "number"
+        },
+        "thoughts": {
+          "type": "string"
+        },
+        "lessons": {
+          "type": "string"
+        },
+        "celebrations": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "date", "mood", "productivity", "thoughts", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -124,6 +159,10 @@
     "users/{userId}/tasks/{taskId}": {
       "schema": "GoalTask",
       "description": "Daily checklists and sub-goals assigned to a specific user"
+    },
+    "users/{userId}/journalEntries/{entryId}": {
+      "schema": "JournalEntry",
+      "description": "Daily self-reflection entries tracked by a specific user"
     }
   }
 }

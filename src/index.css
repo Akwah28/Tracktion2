@@ -1,10 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@600;700&family=Architects+Daughter&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-handwritten: "Caveat", cursive, sans-serif;
+  --font-sketch: "Architects Daughter", cursive, sans-serif;
 }
+
+@variant dark (&:where(.dark, .dark *));
 
 /* Custom smooth transitions & hide scrollbars for fluid mobile-first display */
 ::-webkit-scrollbar {
@@ -21,8 +25,16 @@
   border-radius: 9999px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.4);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 body {
@@ -30,6 +42,12 @@ body {
   color: #1e293b;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.dark body {
+  background-color: #0b0f19;
+  color: #f1f5f9;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -49,6 +67,13 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.5);
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.04);
   isolation: isolate;
+  transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.45);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
 
 /* Frosted glass components */
@@ -56,6 +81,11 @@ body {
   background: rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  transition: background-color 0.4s ease;
+}
+
+.dark .frosted-bg-glass {
+  background: rgba(11, 15, 25, 0.6);
 }
 
 .frosted-card {
@@ -68,6 +98,16 @@ body {
     0 8px 10px -6px rgba(100, 116, 139, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   isolation: isolate;
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark .frosted-card {
+  background: rgba(21, 28, 44, 0.6);
+  border-color: rgba(255, 255, 255, 0.09);
+  box-shadow: 
+    0 10px 25px -5px rgba(0, 0, 0, 0.45), 
+    0 8px 10px -6px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .frosted-card-dark {
@@ -84,6 +124,12 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  transition: background-color 0.4s ease, border-color 0.4s ease;
+}
+
+.dark .frosted-nav {
+  background: rgba(11, 15, 25, 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .frosted-input {
@@ -94,10 +140,21 @@ body {
   transition: all 0.2s ease-in-out;
 }
 
+.dark .frosted-input {
+  background: rgba(15, 22, 36, 0.65);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 .frosted-input:focus {
   background: rgba(255, 255, 255, 0.7);
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
   border-color: rgba(99, 102, 241, 0.5);
+}
+
+.dark .frosted-input:focus {
+  background: rgba(15, 22, 36, 0.95);
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.15);
+  border-color: rgba(129, 140, 248, 0.5);
 }
 
 .frosted-button-primary {
@@ -116,10 +173,22 @@ body {
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: 0 2px 8px rgba(100, 116, 139, 0.05);
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.dark .frosted-button-secondary {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .frosted-button-secondary:hover {
   background: rgba(255, 255, 255, 0.75);
+}
+
+.dark .frosted-button-secondary:hover {
+  background: rgba(148, 163, 184, 0.22);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Glass glowing visual decorators */

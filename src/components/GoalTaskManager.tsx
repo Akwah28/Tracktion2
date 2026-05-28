@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Goal, GoalTask } from '../types';
 import { DynamicIcon } from './DynamicIcon';
+import { TaskItemSkeleton } from './Skeletons';
 
 interface GoalTaskManagerProps {
   goals: Goal[];
@@ -24,6 +25,7 @@ interface GoalTaskManagerProps {
   onEditTask: (taskId: string, updatedData: { title: string; goalId: string; value: number }) => Promise<void>;
   onDeleteTask: (taskId: string) => Promise<void>;
   filterByGoalId?: string; // Optional: Only show tasks for a specific goal
+  loading?: boolean;
 }
 
 export const GoalTaskManager: React.FC<GoalTaskManagerProps> = ({
@@ -33,7 +35,8 @@ export const GoalTaskManager: React.FC<GoalTaskManagerProps> = ({
   onToggleTask,
   onEditTask,
   onDeleteTask,
-  filterByGoalId
+  filterByGoalId,
+  loading = false
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -134,7 +137,7 @@ export const GoalTaskManager: React.FC<GoalTaskManagerProps> = ({
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                 <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Spawn Checklist Task
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Commit to a Daily Action
                 </span>
                 <button
                   type="button"
@@ -147,11 +150,11 @@ export const GoalTaskManager: React.FC<GoalTaskManagerProps> = ({
 
               {/* Title input */}
               <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Action Name</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">What is the action step?</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Sip first 500ml or Draft proposal outline"
+                  placeholder="e.g. Write 500 words, do a rapid 5-min stretch..."
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full text-xs font-bold leading-none p-3 border border-slate-100 bg-slate-50/40 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500/20"
@@ -162,7 +165,7 @@ export const GoalTaskManager: React.FC<GoalTaskManagerProps> = ({
                 {/* Link to Goal */}
                 {!filterByGoalId && (
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Link to Goal Quest</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Connect to Intention</label>
                     <select
                       value={selectedGoalId}
                       onChange={(e) => setSelectedGoalId(e.target.value)}
@@ -206,7 +209,7 @@ export const GoalTaskManager: React.FC<GoalTaskManagerProps> = ({
                 type="submit"
                 className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer active:scale-[0.98] transition-all"
               >
-                Assemble Task
+                Integrate Task Into My Day
               </button>
             </form>
           </motion.div>
@@ -217,21 +220,27 @@ export const GoalTaskManager: React.FC<GoalTaskManagerProps> = ({
       {goals.length === 0 && (
         <div className="p-5 border border-amber-100/60 bg-amber-50/15 rounded-3xl text-center space-y-1">
           <AlertCircle className="w-5 h-5 text-amber-500 mx-auto" />
-          <h5 className="text-xs font-extrabold text-slate-700">No Goal Pathways Available</h5>
+          <h5 className="text-xs font-extrabold text-slate-700">Create Your First Practice</h5>
           <p className="text-[9.5px] text-slate-405">
-            You must create at least one master goal/quest pathway before you can assign discrete daily checklist tasks.
+            To begin your daily checklist, first declare at least one primary area of growth in your goals tab.
           </p>
         </div>
       )}
 
       {/* Checklist tasks container */}
       <div className="space-y-2.5 max-h-[350px] overflow-y-auto no-scrollbar">
-        {filteredTasks.length === 0 ? (
+        {loading ? (
+          <>
+            <TaskItemSkeleton />
+            <TaskItemSkeleton />
+            <TaskItemSkeleton />
+          </>
+        ) : filteredTasks.length === 0 ? (
           <div className="p-7 border border-dashed border-slate-200 rounded-3xl text-center space-y-1 text-slate-400">
             <CheckCircle2 className="w-5 h-5 mx-auto text-slate-300" />
-            <h5 className="text-[11px] font-extrabold text-slate-500">No Checklist Tasks for Today</h5>
+            <h5 className="text-[11px] font-extrabold text-slate-500">Your Checklist is Clear</h5>
             <p className="text-[9px] text-slate-400">
-              Break down your large habit goals into micro bite-sized checklist tasks!
+              Divide your larger intentions into small, actionable steps to build momentum today.
             </p>
           </div>
         ) : (

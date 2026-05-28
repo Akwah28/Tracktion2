@@ -32,11 +32,12 @@ import {
 import { Goal, GoalProgressLog, GoalTask } from '../types';
 import { DynamicIcon } from './DynamicIcon';
 import { GoalTaskManager } from './GoalTaskManager';
+import { GoalJourneyMap } from './GoalJourneyMap';
 
 interface GoalDetailProps {
   goal: Goal;
   onClose: () => void;
-  onUpdateProgress: (goalId: string, incrementValue: number, note?: string) => void;
+  onUpdateProgress: (goalId: string, incrementValue: number, note?: string, customDate?: string) => void;
   onDeleteLog: (goalId: string, logId: string) => void;
   onEdit: (goal: Goal) => void;
   onDeleteGoal: (goalId: string) => void;
@@ -65,7 +66,7 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
   const [logValue, setLogValue] = useState<number>(1);
   const [logNote, setLogNote] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'quest' | 'roadmap' | 'history'>('quest');
+  const [activeSubTab, setActiveSubTab] = useState<'quest' | 'roadmap' | 'history'>('roadmap');
 
   const percentage = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
 
@@ -507,11 +508,11 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Checkpoint Notes / Diary Reflection</label>
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">How did this session feel? (Reflection)</label>
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="e.g. Cleared early morning session, hydrated"
+                      placeholder="Describe your mental clarity, physical stamina, or insights..."
                       value={logNote}
                       onChange={(e) => setLogNote(e.target.value)}
                       maxLength={128}
@@ -526,14 +527,14 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
                   className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-extrabold text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 transition-all shadow-md active:scale-98 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 text-indigo-200 fill-indigo-200 animate-pulse" />
-                  <span>Execute Action & Gain XP</span>
+                  <span>Record Active Progress</span>
                 </button>
               </form>
             </div>
 
             {/* Programmed Milestone Unlocks Cards */}
             <div className="space-y-3">
-              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Unlocked Badge Milestones</span>
+              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Milestones of Consistency</span>
               <div className="space-y-2.5">
                 {milestones.map((milestone) => (
                   <div 
@@ -583,6 +584,16 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
         {/* ROADMAP SUCCESS TIMELINE TAB view */}
         {activeSubTab === 'roadmap' && (
           <div className="space-y-6">
+
+            {/* Hand-drawn Journey Map Visual Aid */}
+            <div className="text-center pt-1">
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-extrabold uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1 rounded-full border border-indigo-100/50 dark:border-indigo-900/30">
+                🗺️ Interactive Journey Trail
+              </span>
+              <div className="mt-4">
+                <GoalJourneyMap goal={goal} onUpdateProgress={onUpdateProgress} />
+              </div>
+            </div>
 
             {/* Interactive Timeline map banner */}
             <div className="frosted-card p-5 rounded-3xl relative overflow-hidden bg-gradient-to-br from-indigo-50/40 to-white">

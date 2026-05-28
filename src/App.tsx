@@ -22,7 +22,9 @@ import {
   Filter,
   Share2,
   Trophy,
-  Bell
+  Bell,
+  Brain,
+  X
 } from 'lucide-react';
 import { Goal, UserProfile, GoalFrequency, GoalTask } from './types';
 import { CATEGORIES, INITIAL_GOALS } from './sampleData';
@@ -38,8 +40,14 @@ import { StreakTrackingEngine } from './components/StreakTrackingEngine';
 import { NotificationCenter } from './components/NotificationCenter';
 import { useAuth } from './context/AuthContext';
 import AuthScreen from './components/AuthScreen';
+import { LandingPage } from './components/LandingPage';
+import { TracktionLogo } from './components/TracktionLogo';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { doc, getDocFromServer, onSnapshot, setDoc, deleteDoc, collection } from 'firebase/firestore';
+import { ThemeToggle } from './components/ThemeToggle';
+import { GoalCardSkeleton, CalendarRegistrySkeleton, TaskItemSkeleton, ProfileFormSkeleton } from './components/Skeletons';
+import { AiGoalCoach } from './components/AiGoalCoach';
+import { DailyPlannerSheet } from './components/DailyPlannerSheet';
 
 export default function App() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -50,6 +58,16 @@ export default function App() {
   const [tasks, setTasks] = useState<GoalTask[]>([]);
   const [isPendingOnboarding, setIsPendingOnboarding] = useState(false);
   const [firestoreOffline, setFirestoreOffline] = useState(false);
+
+  // Sync loading state indicators
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [loadingGoals, setLoadingGoals] = useState(true);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+
+  // Landing page & Auth Modal states
+  const [enterApp, setEnterApp] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [showSandboxTip, setShowSandboxTip] = useState(false);
 
   // Sarah Jenkins preview backup states
   const [sarahPreviewTimeLeft, setSarahPreviewTimeLeft] = useState<number | null>(null);
@@ -117,7 +135,7 @@ export default function App() {
   }, [sarahPreviewTimeLeft, goals, tasks, user]);
 
   // Navigation states
-  const [activeTab, setActiveTab] = useState<'targets' | 'quest' | 'stats' | 'profile'>('targets');
+  const [activeTab, setActiveTab] = useState<'targets' | 'quest' | 'journal' | 'stats' | 'profile'>('targets');
   const [statsSubTab, setStatsSubTab] = useState<'analytics' | 'streaks'>('streaks');
   const [streakEvaluated, setStreakEvaluated] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -140,6 +158,7 @@ export default function App() {
   }, [goals, selectedGoal]);
   const [isCreatingGoal, setIsCreatingGoal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | undefined>(undefined);
+  const [selectedPlannerDate, setSelectedPlannerDate] = useState<Date | null>(null);
   const [sharingGoal, setSharingGoal] = useState<Goal | null>(null);
 
   // Search & Filter state
@@ -199,10 +218,18 @@ export default function App() {
     if (!user) {
       setProfile(null);
       setGoals([]);
+      setTasks([]);
       setIsPendingOnboarding(false);
       setStreakEvaluated(false);
+      setLoadingProfile(false);
+      setLoadingGoals(false);
+      setLoadingTasks(false);
       return;
     }
+
+    setLoadingProfile(true);
+    setLoadingGoals(true);
+    setLoadingTasks(true);
 
     // Dynamic subscription to UserProfile
     const unsubscribeProfile = onSnapshot(
@@ -215,9 +242,11 @@ export default function App() {
           setProfile(null);
           setIsPendingOnboarding(true);
         }
+        setLoadingProfile(false);
       },
       (error) => {
         triggerError(error, OperationType.GET, `users/${user.uid}`);
+        setLoadingProfile(false);
       }
     );
 
@@ -232,9 +261,11 @@ export default function App() {
         // Sort goals by creation date descending
         list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setGoals(list);
+        setLoadingGoals(false);
       },
       (error) => {
         triggerError(error, OperationType.LIST, `users/${user.uid}/goals`);
+        setLoadingGoals(false);
       }
     );
 
@@ -249,9 +280,11 @@ export default function App() {
         // Sort tasks by createdAt descending
         list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setTasks(list);
+        setLoadingTasks(false);
       },
       (error) => {
         triggerError(error, OperationType.LIST, `users/${user.uid}/tasks`);
+        setLoadingTasks(false);
       }
     );
 
@@ -355,6 +388,9 @@ export default function App() {
     deadline?: string;
     priority?: 'low' | 'medium' | 'high';
     difficulty?: 'easy' | 'medium' | 'hard';
+    isRecurring?: boolean;
+    recurringDays?: string[];
+    scheduledDate?: string;
   }) => {
     if (!user) return;
     const today = getTodayStr();
@@ -380,6 +416,9 @@ export default function App() {
           deadline: goalData.deadline || undefined,
           priority: goalData.priority || 'medium',
           difficulty: goalData.difficulty || 'medium',
+          isRecurring: goalData.isRecurring,
+          recurringDays: goalData.recurringDays || undefined,
+          scheduledDate: goalData.scheduledDate || undefined,
         };
         await setDoc(doc(db, 'users', user.uid, 'goals', goalData.id), updatedGoal);
       } else {
@@ -402,6 +441,9 @@ export default function App() {
           deadline: goalData.deadline || undefined,
           priority: goalData.priority || 'medium',
           difficulty: goalData.difficulty || 'medium',
+          isRecurring: goalData.isRecurring,
+          recurringDays: goalData.recurringDays || undefined,
+          scheduledDate: goalData.scheduledDate || undefined,
         };
         await setDoc(doc(db, 'users', user.uid, 'goals', goalId), newGoal);
       }
@@ -448,19 +490,30 @@ export default function App() {
 
   // Toggle task completion (this automatically updates connected goal progress)
   const handleToggleTask = async (taskId: string) => {
-    if (!user) return;
+    if (!user || !profile) return;
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    const newCompleted = !task.completed;
-    try {
-      // 1. Update task in Firestore
-      await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), {
-        ...task,
-        completed: newCompleted
-      });
+    // Capture prior states for ultimate self-contained rollback functionality
+    const prevTasks = [...tasks];
+    const prevGoals = [...goals];
+    const prevProfile = { ...profile };
 
-      // 2. Automatically update matched goal's value
+    const newCompleted = !task.completed;
+    
+    // 1. Instantly toggle task locally (Optimistic UI)
+    const updatedTask = {
+      ...task,
+      completed: newCompleted
+    };
+    const optTasksList = tasks.map(t => t.id === taskId ? updatedTask : t);
+    setTasks(optTasksList);
+
+    try {
+      // 2. Dispatch Firestore update
+      await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), updatedTask);
+
+      // 3. Automatically update matched goal's value
       if (task.goalId) {
         const increment = newCompleted ? task.value : -task.value;
         const actionNote = newCompleted 
@@ -469,6 +522,10 @@ export default function App() {
         await handleUpdateProgress(task.goalId, increment, actionNote);
       }
     } catch (error) {
+      // Perform instantaneous complete rollback secure restoration
+      setTasks(prevTasks);
+      setGoals(prevGoals);
+      setProfile(prevProfile);
       triggerError(error, OperationType.WRITE, `users/${user.uid}/tasks/${taskId}`);
     }
   };
@@ -557,13 +614,18 @@ export default function App() {
   };
 
   // Log session progress & compute streak indices
-  const handleUpdateProgress = async (goalId: string, increment: number, note?: string) => {
+  const handleUpdateProgress = async (goalId: string, increment: number, note?: string, customDate?: string) => {
     if (!user || !profile) return;
     const today = getTodayStr();
     const yesterday = getYesterdayStr();
+    const logDate = customDate || today;
 
     const g = goals.find(item => item.id === goalId);
     if (!g) return;
+
+    // Secure previous state snapshots for recovery
+    const prevGoals = [...goals];
+    const prevProfile = { ...profile };
 
     try {
       const prevValue = g.currentValue;
@@ -573,7 +635,7 @@ export default function App() {
 
       const newLog = {
         id: `log-${Date.now()}`,
-        date: today,
+        date: logDate,
         value: increment,
         note
       };
@@ -583,7 +645,7 @@ export default function App() {
       let updatedStreak = g.streak;
       let finalCompletionDate = g.lastCompletedDate;
 
-      if (reachedCompletion && !wasCompletedBefore) {
+      if (reachedCompletion && !wasCompletedBefore && logDate === today) {
         // Goal is completed newly today!
         setCelebrationGoal(g.title);
         setTimeout(() => setCelebrationGoal(null), 3000);
@@ -609,15 +671,8 @@ export default function App() {
         lastCompletedDate: finalCompletionDate
       };
 
-      // Update goal in Firestore
-      await setDoc(doc(db, 'users', user.uid, 'goals', goalId), updatedGoal);
-
-      setTimeout(() => {
-        setSelectedGoal(updatedGoal);
-      }, 50);
-
       // Update global user streak history
-      const updatedHistory = Array.from(new Set([...profile.stats.streakHistory, today])).sort();
+      const updatedHistory = Array.from(new Set([...profile.stats.streakHistory, logDate])).sort();
       
       let contiguousStreak = 0;
       let hasStreakForCheck = true;
@@ -653,9 +708,21 @@ export default function App() {
         }
       };
 
-      // Set user profile in Firestore
+      // Perform optimistic local React component updates BEFORE Firestore dispatching finishes
+      setGoals(goals.map(item => item.id === goalId ? updatedGoal : item));
+      setProfile(updatedProfile);
+      setSelectedGoal(updatedGoal);
+
+      // Dispatch Firestore transactions
+      await setDoc(doc(db, 'users', user.uid, 'goals', goalId), updatedGoal);
       await setDoc(doc(db, 'users', user.uid), updatedProfile);
+
     } catch (error) {
+      // Rollback to prior secure values on error
+      setGoals(prevGoals);
+      setProfile(prevProfile);
+      const prevG = prevGoals.find(item => item.id === goalId);
+      if (prevG) setSelectedGoal(prevG);
       triggerError(error, OperationType.WRITE, `users/${user.uid}/goals/${goalId}`);
     }
   };
@@ -794,6 +861,17 @@ export default function App() {
     });
   }, [goals, searchQuery, categoryFilter, statusFilter]);
 
+  // Synchronize enterApp state with Auth state transitions
+  useEffect(() => {
+    if (!user) {
+      setEnterApp(false);
+    } else if (user && authModalOpen) {
+      // Auto-enter app dashboard after successful login/signup from modal
+      setEnterApp(true);
+      setAuthModalOpen(false);
+    }
+  }, [user, authModalOpen]);
+
   // 1. Show a full-page loading state while auth is being checked
   if (authLoading) {
     return (
@@ -803,10 +881,7 @@ export default function App() {
           <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-300/30 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
           
           <div className="relative">
-            <div className="h-16 w-16 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-lg relative">
-              <div className="absolute inset-0 bg-indigo-500 rounded-3xl blur-md opacity-40 animate-pulse" />
-              <Flame className="w-8 h-8 text-white relative z-10 animate-pulse" />
-            </div>
+            <TracktionLogo size={64} className="animate-pulse" />
           </div>
           <p className="text-sm font-bold text-slate-700 animate-pulse">Syncing Tracktion Session...</p>
         </div>
@@ -814,21 +889,126 @@ export default function App() {
     );
   }
 
-  // 2. Redirect unauthenticated users to login
-  if (!user) {
+  // 2. Redirect users to the landing page first so they can explore
+  if (!enterApp || !user) {
     return (
-      <div className="flex bg-slate-900 justify-center items-center min-h-screen">
-        <div className="bg-slate-50/90 w-full max-w-md h-[100dvh] md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl border-4 border-slate-950 flex flex-col justify-between relative">
-          <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-300/30 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-300/30 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
+      <div className="relative min-h-screen">
+        <LandingPage 
+          isLoggedIn={!!user}
+          onLaunchApp={() => {
+            if (user) {
+              setEnterApp(true);
+            } else {
+              setShowSandboxTip(false);
+              setAuthModalOpen(true);
+            }
+          }}
+          onDemoPreview={() => {
+            if (user) {
+              setEnterApp(true);
+            } else {
+              setShowSandboxTip(true);
+              setAuthModalOpen(true);
+            }
+          }}
+        />
+
+        {/* Full-screen premium interactive Auth Modal over the Landing Page */}
+        <AnimatePresence>
+          {authModalOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+            >
+              {/* Animated simulator container */}
+              <motion.div
+                initial={{ scale: 0.95, y: 30, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.95, y: 30, opacity: 0 }}
+                transition={{ type: "spring", damping: 25, stiffness: 180 }}
+                className="relative bg-slate-900 w-full max-w-md h-[100dvh] md:h-[820px] md:rounded-[40px] overflow-hidden shadow-2xl border-4 border-slate-950 flex flex-col justify-between"
+              >
+                {/* Back / Close button */}
+                <button 
+                  onClick={() => {
+                    setAuthModalOpen(false);
+                    setShowSandboxTip(false);
+                  }}
+                  className="absolute top-4 right-4 z-50 h-8 w-8 rounded-full bg-slate-950/60 text-slate-400 hover:text-white hover:bg-slate-950 flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                {/* Info Tip Banner (if trying to see demo) */}
+                {showSandboxTip && (
+                  <div className="absolute top-[48px] inset-x-4 z-50 bg-indigo-900/90 border border-indigo-700/80 text-white p-3.5 rounded-2xl shadow-xl flex gap-2.5 text-left">
+                    <Sparkles className="w-4.5 h-4.5 text-yellow-300 flex-shrink-0 animate-pulse mt-0.5" />
+                    <div className="min-w-0">
+                      <h4 className="text-[10px] uppercase font-black tracking-widest text-indigo-300">Sandbox Preview Ready</h4>
+                      <p className="text-[10px] font-semibold text-indigo-100 leading-normal">
+                        To load Sarah's demo tracker, register a mock account (no verification needed). It takes less than 5 seconds!
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-300/30 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-300/30 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
+                
+                <AuthScreen />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // 3. Show a full-page skeleton while profile is loading
+  if (loadingProfile) {
+    return (
+      <div className="flex bg-slate-900 justify-center items-center min-h-screen font-sans">
+        <div className="bg-slate-50/90 dark:bg-slate-950/90 w-full h-[100dvh] md:max-w-md md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl relative flex flex-col justify-between md:border-4 md:border-slate-955 transition-colors duration-300">
+          <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-200/40 dark:bg-indigo-950/20 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-200/40 dark:bg-blue-950/20 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
           
-          <AuthScreen />
+          <div className="p-5 space-y-6 flex-1 overflow-y-auto no-scrollbar pb-24 text-left">
+            {/* Top Bar Skeleton */}
+            <div className="flex items-center justify-between pb-1">
+              <div className="flex items-center gap-2.5">
+                <div className="h-11 w-11 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-2xl animate-pulse" />
+                <div className="space-y-1.5">
+                  <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 animate-pulse rounded animate-pulse" />
+                  <div className="h-4 w-24 bg-slate-200 dark:bg-slate-800 animate-pulse rounded animate-pulse" />
+                </div>
+              </div>
+              <div className="h-9 w-20 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-full animate-pulse" />
+            </div>
+
+            {/* Calendar Registry Indicator Skeleton */}
+            <CalendarRegistrySkeleton />
+
+            {/* Filter tags skeleton */}
+            <div className="flex gap-2">
+              <div className="h-8 w-14 bg-slate-200/70 dark:bg-slate-800/60 animate-pulse rounded-xl" />
+              <div className="h-8 w-20 bg-slate-200/70 dark:bg-slate-800/60 animate-pulse rounded-xl" />
+              <div className="h-8 w-16 bg-slate-200/70 dark:bg-slate-800/60 animate-pulse rounded-xl" />
+            </div>
+
+            {/* Goal Card Skeletons */}
+            <div className="space-y-3 pt-2">
+              <GoalCardSkeleton />
+              <GoalCardSkeleton />
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 3. Render onboarding if user has not completed profile setup
+  // 4. Render onboarding if user has not completed profile setup
   if (isPendingOnboarding || !profile) {
     return (
       <div className="flex bg-slate-900 justify-center items-center min-h-screen">
@@ -874,11 +1054,11 @@ export default function App() {
   return (
     <div className="flex bg-slate-900 justify-center items-center min-h-screen font-sans">
       {/* Visual device wrapper bounding container */}
-      <div className="bg-slate-50/90 w-full h-[100dvh] md:max-w-md md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl relative flex flex-col justify-between md:border-4 md:border-slate-950">
+      <div className="bg-slate-50/90 dark:bg-slate-950/90 w-full h-[100dvh] md:max-w-md md:h-[840px] md:rounded-[40px] overflow-hidden shadow-2xl relative flex flex-col justify-between md:border-4 md:border-slate-955 transition-colors duration-300">
         
         {/* Ambient background blur blobs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-200/45 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-200/45 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
+        <div className="absolute top-[-10%] left-[-10%] w-[65%] h-[40%] bg-indigo-200/45 dark:bg-indigo-950/25 rounded-full blur-[80px] pointer-events-none animate-pulse-glow" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[75%] h-[45%] bg-blue-200/45 dark:bg-blue-950/25 rounded-full blur-[90px] pointer-events-none animate-pulse-glow-alt" />
         
         {/* Real-time celebration overlay popup banner */}
         <AnimatePresence>
@@ -1000,9 +1180,10 @@ export default function App() {
 
                 {/* Main collective user global streak with companion Notification Bell */}
                 <div className="flex items-center gap-2">
+                  <ThemeToggle />
                   <button
                     onClick={() => setIsNotificationsOpen(true)}
-                    className="h-9 w-9 bg-white border border-slate-200/60 rounded-xl flex items-center justify-center text-slate-550 hover:text-slate-800 transition-all cursor-pointer relative shadow-3xs active:scale-95"
+                    className="h-9 w-9 bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 rounded-xl flex items-center justify-center text-slate-555 dark:text-slate-350 hover:text-slate-800 dark:hover:text-white transition-all cursor-pointer relative shadow-3xs active:scale-95"
                     title="Open reminders and encouragements"
                   >
                     <Bell className="w-4 h-4" />
@@ -1020,45 +1201,115 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Habit calendar tracker streak indicator bar */}
+              {/* Habit calendar tracker streak indicator bar - Updated to Weekly Planner */}
               <div className="frosted-card p-4 rounded-3xl space-y-2.5">
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-indigo-500" /> Active Registry
+                  <span className="text-[10px] text-slate-450 dark:text-slate-400 font-extrabold uppercase tracking-widest flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-500" /> Weekly Planner
                   </span>
-                  <span className="text-[9px] text-indigo-600 font-bold bg-indigo-50/60 border border-indigo-100 py-0.5 px-2 rounded-full">
-                    Last 7 days
+                  <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100/50 py-0.5 px-2 rounded-full">
+                    Mon – Sun view
                   </span>
                 </div>
  
                 <div className="grid grid-cols-7 gap-1">
-                  {[6, 5, 4, 3, 2, 1, 0].map((daysAgo) => {
-                    const dateObj = new Date();
-                    dateObj.setDate(dateObj.getDate() - daysAgo);
-                    const dateString = dateObj.toISOString().split('T')[0];
-                    const dayInitial = dateObj.toLocaleDateString('en-US', { weekday: 'narrow' });
-                    const isCompleted = profile.stats.streakHistory.includes(dateString);
-                    const isToday = daysAgo === 0;
- 
-                    return (
-                      <div key={daysAgo} className="flex flex-col items-center gap-1.5">
-                        <span className={`text-[10px] font-bold ${isToday ? 'text-indigo-600 font-extrabold' : 'text-slate-400'}`}>
-                          {dayInitial}
-                        </span>
+                  {(() => {
+                    const today = new Date();
+                    const currentDay = today.getDay();
+                    const distToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+                    const mondayDate = new Date();
+                    mondayDate.setDate(today.getDate() + distToMonday);
+
+                    return Array.from({ length: 7 }).map((_, idx) => {
+                      const dateObj = new Date(mondayDate);
+                      dateObj.setDate(mondayDate.getDate() + idx);
+                      const dateString = dateObj.toISOString().split('T')[0];
+                      const dayInitial = dateObj.toLocaleDateString('en-US', { weekday: 'narrow' });
+                      const isTodayString = today.toISOString().split('T')[0] === dateString;
+
+                      // Filter active goals on this weekday
+                      const activeGroup = goals.filter((g) => {
+                        if (g.scheduledDate) {
+                          return g.scheduledDate === dateString;
+                        }
+                        if (g.isRecurring) {
+                          const dayShort = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                          return !!g.recurringDays?.includes(dayShort);
+                        }
+                        if (g.frequency === 'daily') {
+                          return true;
+                        }
+                        return false;
+                      });
+
+                      const totalActive = activeGroup.length;
+                      const completedCount = activeGroup.filter((g) => {
+                        const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
+                        return prog >= g.targetValue;
+                      }).length;
+
+                      const isAllCompleted = totalActive > 0 && completedCount === totalActive;
+                      const hasPartialCompletion = totalActive > 0 && completedCount > 0;
+
+                      return (
                         <div 
-                          className={`h-9 w-9 rounded-xl flex items-center justify-center border transition-all text-sm ${
-                            isCompleted 
-                              ? 'bg-emerald-500 border-emerald-400 text-white shadow-sm' 
-                              : isToday 
-                                ? 'bg-white/60 border-indigo-400 text-slate-400' 
-                                : 'bg-white/30 border-white/40 text-slate-400'
-                          }`}
+                          key={idx} 
+                          onClick={() => setSelectedPlannerDate(dateObj)}
+                          className="flex flex-col items-center gap-1.5 cursor-pointer group select-none relative"
                         >
-                          {isCompleted ? <Check className="w-4 h-4 font-extrabold" /> : <span className="text-[10px] font-bold">{dateObj.getDate()}</span>}
+                          <span className={`text-[10px] font-bold ${isTodayString ? 'text-indigo-600 dark:text-indigo-400 font-extrabold' : 'text-slate-450 dark:text-slate-500'}`}>
+                            {dayInitial}
+                          </span>
+                          
+                          {/* Date circle */}
+                          <div 
+                            className={`h-9 w-9 xl:h-11 xl:w-11 rounded-2xl flex flex-col items-center justify-center border transition-all relative ${
+                              isAllCompleted 
+                                ? 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400 text-white shadow-xs' 
+                                : isTodayString 
+                                  ? 'bg-indigo-50/15 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-black' 
+                                  : hasPartialCompletion
+                                    ? 'bg-indigo-50/40 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-900/60 text-slate-700 dark:text-slate-300'
+                                    : 'bg-white/45 dark:bg-slate-900/40 border-slate-100 dark:border-slate-850/50 text-slate-450 dark:text-slate-400 hover:border-slate-200'
+                            }`}
+                          >
+                            <span className="text-[10.5px] font-bold">{dateObj.getDate()}</span>
+                          </div>
+
+                          {/* Goals indicators inside cell */}
+                          <div className="flex gap-0.5 justify-center h-1.5 w-full">
+                            {activeGroup.slice(0, 4).map((g, gi) => {
+                              const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
+                              const gCompleted = prog >= g.targetValue;
+                              const dotColorClass = {
+                                emerald: 'bg-emerald-500',
+                                indigo: 'bg-indigo-500',
+                                rose: 'bg-rose-500',
+                                amber: 'bg-amber-500',
+                                violet: 'bg-violet-500',
+                                sky: 'bg-sky-500',
+                              }[g.color] || 'bg-slate-450';
+
+                              return (
+                                <div 
+                                  key={gi}
+                                  className={`h-1 w-1 rounded-full transition-all ${
+                                    gCompleted 
+                                      ? `${dotColorClass} scale-110 opacity-100` 
+                                      : `${dotColorClass} opacity-35 dark:opacity-20`
+                                  }`}
+                                  title={g.title}
+                                />
+                              );
+                            })}
+                            {activeGroup.length > 4 && (
+                              <span className="text-[6px] leading-[4px] font-extrabold text-slate-400 block">+</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
@@ -1117,7 +1368,13 @@ export default function App() {
 
               {/* Dynamic filtered goals card registry */}
               <div className="space-y-3 pb-10">
-                {filteredGoals.length === 0 ? (
+                {loadingGoals ? (
+                  <>
+                    <GoalCardSkeleton />
+                    <GoalCardSkeleton />
+                    <GoalCardSkeleton />
+                  </>
+                ) : filteredGoals.length === 0 ? (
                   <div className="text-center py-10 frosted-card rounded-3xl p-5 space-y-3 shadow-xs">
                     <div className="p-3 bg-indigo-50 rounded-2xl w-fit mx-auto text-indigo-500">
                       <Target className="w-6 h-6" />
@@ -1271,7 +1528,6 @@ export default function App() {
                     goal={selectedGoal}
                     onClose={() => {
                       setSelectedGoal(null);
-                      setActiveTab('targets');
                     }}
                     onUpdateProgress={handleUpdateProgress}
                     onDeleteLog={handleDeleteLog}
@@ -1305,6 +1561,7 @@ export default function App() {
                       onToggleTask={handleToggleTask}
                       onEditTask={handleEditTask}
                       onDeleteTask={handleDeleteTask}
+                      loading={loadingTasks}
                     />
                   </div>
 
@@ -1421,13 +1678,33 @@ export default function App() {
               {statsSubTab === 'streaks' && profile ? (
                 <StreakTrackingEngine goals={goals} profile={profile} />
               ) : (
-                profile && <StatsDashboard goals={goals} profile={profile} tasks={tasks} />
+                profile && <StatsDashboard goals={goals} profile={profile} tasks={tasks} loading={loadingGoals || loadingTasks} />
               )}
             </motion.div>
           )}
 
+          {/* Daily Reflection Journal Screen */}
+          {activeTab === 'journal' && user && profile && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.99, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.99, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeInOut" }}
+              className="p-5 space-y-6 pb-24"
+            >
+              <AiGoalCoach 
+                user={user} 
+                profile={profile} 
+                onGoalCreated={(newGoal) => {
+                  setSelectedGoal(newGoal);
+                  setActiveTab('targets');
+                }} 
+              />
+            </motion.div>
+          )}
+
           {/* Account Profile Screen Settings */}
-          {activeTab === 'profile' && profile && (
+          {activeTab === 'profile' && (
             <motion.div
               initial={{ opacity: 0, scale: 0.99, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1435,12 +1712,23 @@ export default function App() {
               transition={{ duration: 0.18, ease: "easeInOut" }}
               className="pb-24"
             >
-              <ProfileSettings 
-                profile={profile} 
-                goals={goals} 
-                onResetApp={handleResetApp} 
-                onLoadSample={handleLoadSampleData} 
-              />
+              {loadingProfile || !profile ? (
+                <div className="p-5 space-y-6 max-w-md mx-auto">
+                  <div className="pb-1 text-left">
+                    <span className="text-[10px] text-indigo-600 font-extrabold uppercase tracking-wider block">Identity Manager</span>
+                    <h2 className="text-xl font-extrabold text-slate-800">Account Profile</h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Edit tracking indicators & visual preferences</p>
+                  </div>
+                  <ProfileFormSkeleton />
+                </div>
+              ) : (
+                <ProfileSettings 
+                  profile={profile} 
+                  goals={goals} 
+                  onResetApp={handleResetApp} 
+                  onLoadSample={handleLoadSampleData} 
+                />
+              )}
             </motion.div>
           )}
 
@@ -1453,22 +1741,22 @@ export default function App() {
               setEditingGoal(undefined);
               setIsCreatingGoal(true);
             }}
-            className="absolute bottom-20 right-5 z-20 h-14 w-14 rounded-2xl bg-slate-900 text-white shadow-xl hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center border border-slate-800 group"
+            className="absolute bottom-20 right-5 z-20 h-14 w-14 rounded-2xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950 shadow-xl hover:bg-slate-800 dark:hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center border border-slate-800 dark:border-slate-100 group cursor-pointer"
             id="floating-create-goal"
           >
-            <Plus className="w-7 h-7 text-white font-extrabold group-hover:rotate-90 transition-transform" />
+            <Plus className="w-7 h-7 text-white dark:text-slate-950 font-extrabold group-hover:rotate-90 transition-transform" />
           </button>
         )}
 
         {/* Bottom tab bar mobile navigation */}
-        <div className="pb-[max(12px,env(safe-area-inset-bottom,20px))] pt-3 bg-white/95 border-t border-slate-200/50 flex items-center justify-around px-3 z-10 w-full shadow-sm">
+        <div className="pb-[max(12px,env(safe-area-inset-bottom,20px))] pt-3 bg-white/95 dark:bg-slate-950/95 border-t border-slate-200/50 dark:border-slate-900/55 flex items-center justify-around px-3 z-10 w-full shadow-sm transition-colors duration-300">
           
           <button
             onClick={() => setActiveTab('targets')}
             className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
               activeTab === 'targets' 
-                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
-                : 'text-slate-400 hover:text-slate-650'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/55 dark:bg-indigo-950/40 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-650 dark:text-slate-500 dark:hover:text-slate-300'
             }`}
           >
             <Target className="w-5 h-5" />
@@ -1476,11 +1764,16 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab('quest')}
+            onClick={() => {
+              setActiveTab('quest');
+              if (goals.length > 0 && !selectedGoal) {
+                setSelectedGoal(goals[0]);
+              }
+            }}
             className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
               activeTab === 'quest' 
-                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
-                : 'text-slate-400 hover:text-slate-650'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/55 dark:bg-indigo-950/40 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-650 dark:text-slate-500 dark:hover:text-slate-300'
             }`}
           >
             <Trophy className="w-5 h-5" />
@@ -1488,11 +1781,23 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setActiveTab('journal')}
+            className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
+              activeTab === 'journal' 
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/55 dark:bg-indigo-950/40 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-655 dark:text-slate-500 dark:hover:text-slate-300'
+            }`}
+          >
+            <Brain className="w-5 h-5" />
+            <span className="text-[9.5px] font-black uppercase tracking-wider block mt-0.5">AI Coach</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('stats')}
             className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
               activeTab === 'stats' 
-                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
-                : 'text-slate-400 hover:text-slate-655'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/55 dark:bg-indigo-950/40 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-655 dark:text-slate-500 dark:hover:text-slate-300'
             }`}
           >
             <TrendingUp className="w-5 h-5" />
@@ -1503,8 +1808,8 @@ export default function App() {
             onClick={() => setActiveTab('profile')}
             className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-2xl transition-all select-none active:scale-90 cursor-pointer min-h-[48px] justify-center flex-1 ${
               activeTab === 'profile' 
-                ? 'text-indigo-600 bg-indigo-50/55 shadow-3xs font-black' 
-                : 'text-slate-400 hover:text-slate-655'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/55 dark:bg-indigo-950/40 shadow-3xs font-black' 
+                : 'text-slate-400 hover:text-slate-655 dark:text-slate-500 dark:hover:text-slate-300'
             }`}
           >
             <User className="w-5 h-5" />
@@ -1601,6 +1906,55 @@ export default function App() {
                 }}
               />
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 5. Weekly Planner Day Detail Bottom Sheet */}
+        <AnimatePresence>
+          {selectedPlannerDate !== null && (
+            <DailyPlannerSheet
+              date={selectedPlannerDate}
+              activeGoals={goals.filter((g) => {
+                const dateString = selectedPlannerDate.toISOString().split('T')[0];
+                if (g.scheduledDate) {
+                  return g.scheduledDate === dateString;
+                }
+                if (g.isRecurring) {
+                  const dayShort = selectedPlannerDate.toLocaleDateString('en-US', { weekday: 'short' });
+                  return !!g.recurringDays?.includes(dayShort);
+                }
+                if (g.frequency === 'daily') {
+                  return true;
+                }
+                return false;
+              })}
+              onClose={() => setSelectedPlannerDate(null)}
+              onUpdateGoalProgress={handleUpdateProgress}
+              onAddNewGoal={(preselectedDate) => {
+                setEditingGoal({ 
+                  id: '',
+                  title: '',
+                  description: '',
+                  category: 'Wellness',
+                  targetValue: 1,
+                  unit: 'mins',
+                  frequency: 'daily',
+                  color: 'indigo',
+                  icon: 'Heart',
+                  streak: 0,
+                  createdAt: preselectedDate,
+                  logs: [],
+                  scheduledDate: preselectedDate
+                } as any);
+                setIsCreatingGoal(true);
+                setSelectedPlannerDate(null);
+              }}
+              onEditGoal={(goal) => {
+                setEditingGoal(goal);
+                setIsCreatingGoal(true);
+                setSelectedPlannerDate(null);
+              }}
+            />
           )}
         </AnimatePresence>
 

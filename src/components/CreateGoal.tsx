@@ -34,6 +34,9 @@ interface CreateGoalProps {
     deadline?: string;
     priority?: 'low' | 'medium' | 'high';
     difficulty?: 'easy' | 'medium' | 'hard';
+    isRecurring?: boolean;
+    recurringDays?: string[];
+    scheduledDate?: string;
   }) => void;
   onCancel: () => void;
   editingGoal?: Goal;
@@ -76,6 +79,11 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
+  // Recurrence / Planner fields
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringDays, setRecurringDays] = useState<string[]>([]);
+  const [scheduledDate, setScheduledDate] = useState('');
+
   // Load editing values if present
   useEffect(() => {
     if (editingGoal) {
@@ -90,6 +98,9 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
       setDeadline(editingGoal.deadline || '');
       setPriority(editingGoal.priority || 'medium');
       setDifficulty(editingGoal.difficulty || 'medium');
+      setIsRecurring(editingGoal.isRecurring || false);
+      setRecurringDays(editingGoal.recurringDays || []);
+      setScheduledDate(editingGoal.scheduledDate || '');
       
       if (!PRESET_UNITS.includes(editingGoal.unit)) {
         setShowCustomUnit(true);
@@ -128,6 +139,9 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
       deadline: deadline || undefined,
       priority,
       difficulty,
+      isRecurring,
+      recurringDays: isRecurring ? recurringDays : undefined,
+      scheduledDate: !isRecurring ? (scheduledDate || undefined) : undefined,
     });
   };
 
@@ -151,7 +165,7 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
           <X className="w-5 h-5" />
         </button>
         <h2 className="text-base font-bold text-slate-800">
-          {editingGoal ? 'Edit Goal' : 'Create Goal'}
+          {editingGoal ? 'Refine Your Focus' : 'Declare a New Focus'}
         </h2>
         <button
           onClick={handleSubmit}
@@ -159,7 +173,7 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
           className="text-sm font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-40"
           id="btn-save-goal"
         >
-          Save
+          {editingGoal ? 'Secure Refinement' : 'Forge Pathway'}
         </button>
       </div>
 
@@ -235,14 +249,14 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
           {/* Goal Name */}
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
-              Goal Title
+              What area of growth needs focus?
             </label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Read physical book"
+              placeholder="e.g. Quiet contemplation, morning movement, language study..."
               className="w-full frosted-input rounded-2xl py-3 px-4 text-slate-800 placeholder-slate-400 focus:outline-none transition-all font-medium"
             />
           </div>
@@ -250,12 +264,12 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
           {/* Goal Description */}
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
-              Description / Intention
+              Why does this matter? (Your Intention)
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Expand mental models and sleep better."
+              placeholder="e.g. To clear my thoughts, build steady endurance, and keep my promises."
               rows={2}
               className="w-full frosted-input rounded-2xl py-3 px-4 text-slate-800 placeholder-slate-400 focus:outline-none transition-all font-medium resize-none"
             />
@@ -264,7 +278,7 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
           {/* Focus Category */}
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2.5">
-              Focus Area
+              Under which category does this rest?
             </label>
             <div className="grid grid-cols-3 gap-2">
               {CATEGORIES.map((cat) => (
@@ -286,10 +300,10 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
 
           {/* Goal target value & units */}
           <div className="frosted-card p-5 rounded-3xl space-y-4">
-            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Metrics & Targets</h4>
+            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Pacing & Objectives</h4>
             
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-700">Target Value</span>
+              <span className="text-sm font-semibold text-slate-700">Daily target threshold</span>
               <div className="flex items-center gap-1 border border-white/50 rounded-2xl p-1 bg-white/35 backdrop-blur-xs">
                 <button
                   type="button"
@@ -318,13 +332,13 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
             {/* Units Selection */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-600 uppercase">Unit of Measure</span>
+                <span className="text-xs font-bold text-slate-600 uppercase">How do you count your progress?</span>
                 <button
                   type="button"
                   onClick={() => setShowCustomUnit(!showCustomUnit)}
                   className="text-xs font-bold text-indigo-600 hover:underline"
                 >
-                  {showCustomUnit ? 'Choose presets' : 'Custom unit'}
+                  {showCustomUnit ? 'Typical units' : 'Custom counts'}
                 </button>
               </div>
 
@@ -378,6 +392,109 @@ export const CreateGoal: React.FC<CreateGoalProps> = ({ onSave, onCancel, editin
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Weekly Planner Schedule Selection */}
+          <div className="frosted-card p-5 rounded-3xl space-y-4">
+            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-500" /> Weekly Planner Schedule
+            </h4>
+
+            {/* Selection between One-time Day vs Recurring Days */}
+            <div className="grid grid-cols-2 gap-2 bg-white/25 p-1 border border-slate-100/45 dark:border-slate-800/40 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecurring(false);
+                }}
+                className={`py-2 text-[11px] font-black rounded-xl transition-all ${
+                  !isRecurring
+                    ? 'bg-indigo-650 text-white shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 hover:bg-white/20'
+                }`}
+              >
+                One-Time date
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecurring(true);
+                  if (recurringDays.length === 0) {
+                    setRecurringDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+                  }
+                }}
+                className={`py-2 text-[11px] font-black rounded-xl transition-all ${
+                  isRecurring
+                    ? 'bg-indigo-650 text-white shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 hover:bg-white/20'
+                }`}
+              >
+                Recurring Weekly
+              </button>
+            </div>
+
+            {!isRecurring ? (
+              // One-time date input
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">
+                  Assign to Specific Date
+                </label>
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  className="w-full text-xs font-bold leading-none p-3.5 bg-white/45 hover:bg-white/60 focus:bg-white border border-slate-100 dark:border-slate-850 rounded-2xl text-slate-800 dark:text-slate-100 focus:outline-none transition-all focus:ring-1 focus:ring-indigo-55/20"
+                />
+              </div>
+            ) : (
+              // Recurring Days options
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">
+                    Active planner weekdays
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (recurringDays.length === 7) {
+                        setRecurringDays([]);
+                      } else {
+                        setRecurringDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+                      }
+                    }}
+                    className="text-[9.5px] font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    {recurringDays.length === 7 ? 'Clear All' : 'Select Full Week'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
+                    const isSelected = recurringDays.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setRecurringDays(recurringDays.filter(d => d !== day));
+                          } else {
+                            setRecurringDays([...recurringDays, day]);
+                          }
+                        }}
+                        className={`py-2 rounded-xl border text-[10px] font-black transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 border-indigo-505 text-white shadow-3xs scale-[1.05]'
+                            : 'border-slate-100 dark:border-slate-850 bg-white/50 dark:bg-slate-950 text-slate-400 dark:text-slate-500 hover:bg-slate-50'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Target Milestone Specifications */}

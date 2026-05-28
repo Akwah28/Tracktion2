@@ -35,16 +35,44 @@ import {
 import { Goal, UserProfile, GoalTask } from '../types';
 import { CATEGORIES } from '../sampleData';
 import { DynamicIcon } from './DynamicIcon';
+import { MiniStatSkeleton, DashboardCardSkeleton } from './Skeletons';
+
+import { doc } from 'firebase/firestore';
+import { useTheme } from '../context/ThemeContext';
 
 interface StatsDashboardProps {
   goals: Goal[];
   profile: UserProfile;
   tasks?: GoalTask[];
+  loading?: boolean;
 }
 
 const COLORS = ['#10b981', '#6366f1', '#ec4899', '#f59e0b', '#8b5cf6', '#0ea5e9'];
 
-export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, tasks = [] }) => {
+export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, tasks = [], loading = false }) => {
+  const { resolvedTheme } = useTheme();
+
+  if (loading) {
+    return (
+      <div className="space-y-6 pb-24 text-left">
+        {/* KPI Mini Stat Skeletons grid */}
+        <div className="grid grid-cols-2 gap-3.5">
+          <MiniStatSkeleton />
+          <MiniStatSkeleton />
+        </div>
+
+        {/* Mini stats cards group */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-3.5 rounded-2xl bg-white/45 dark:bg-slate-900/40 border border-white/50 dark:border-slate-800/55 shadow-xs h-16 animate-pulse" />
+          <div className="p-3.5 rounded-2xl bg-white/45 dark:bg-slate-900/40 border border-white/50 dark:border-slate-800/55 shadow-xs h-16 animate-pulse" />
+        </div>
+
+        {/* Main Charts Skeletons */}
+        <DashboardCardSkeleton />
+        <DashboardCardSkeleton />
+      </div>
+    );
+  }
   // 1. Calculate overall metrics
   const totalGoalsCount = goals.length;
   
@@ -376,14 +404,14 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.15 }}
-          className="frosted-card p-5 rounded-3xl space-y-4 flex flex-col bg-white"
+          className="frosted-card p-5 rounded-3xl space-y-4 flex flex-col bg-white/45 dark:bg-slate-900/40"
         >
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
-                <PieChartIcon className="w-4 h-4 text-emerald-500" /> Completion Density
+              <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-350 uppercase tracking-widest flex items-center gap-1.5">
+                <PieChartIcon className="w-4 h-4 text-emerald-500" /> My Daily Alignment
               </h4>
-              <p className="text-[10px] text-slate-450 mt-0.5 font-medium">Completed vs ongoing habit pathways</p>
+              <p className="text-[10px] text-slate-450 mt-0.5 font-medium">A breakdown of active intentions completed today</p>
             </div>
           </div>
 
@@ -405,13 +433,20 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
                 </Pie>
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: '#ffffff', 
+                    backgroundColor: resolvedTheme === 'dark' ? '#0f172a' : '#ffffff', 
                     borderRadius: '12px', 
-                    borderColor: '#e2e8f0',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                    borderColor: resolvedTheme === 'dark' ? '#1e293b' : '#e2e8f0',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)',
                     fontSize: '11px',
-                    fontFamily: 'var(--font-sans)'
-                  }} 
+                    fontFamily: 'var(--font-sans)',
+                    color: resolvedTheme === 'dark' ? '#f1f5f9' : '#1e293b'
+                  }}
+                  itemStyle={{
+                    color: resolvedTheme === 'dark' ? '#cbd5e1' : '#475569'
+                  }}
+                  labelStyle={{
+                    color: resolvedTheme === 'dark' ? '#94a3b8' : '#64748b'
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -442,19 +477,19 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
-          className="frosted-card p-5 rounded-3xl space-y-4 bg-white"
+          className="frosted-card p-5 rounded-3xl space-y-4 bg-white/45 dark:bg-slate-900/40"
         >
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
+              <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-350 uppercase tracking-widest flex items-center gap-1.5">
                 <Activity className="w-4 h-4 text-indigo-500" /> Weekly Activity Spark
               </h4>
               <p className="text-[10px] text-slate-450 mt-0.5 font-medium">Aggregated daily habits and task check-ins</p>
             </div>
-            <span className="text-[10.5px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">Last 7 Days</span>
+            <span className="text-[10.5px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md">Last 7 Days</span>
           </div>
 
-          <div className="h-44 w-full">
+          <div className="h-44 w-full font-sans">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={last7DaysData} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
                 <defs>
@@ -467,22 +502,29 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
                   dataKey="dayName" 
                   tickLine={false} 
                   axisLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 650 }}
+                  tick={{ fill: resolvedTheme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 650 }}
                 />
                 <YAxis 
                   tickLine={false} 
                   axisLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 650 }}
+                  tick={{ fill: resolvedTheme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 650 }}
                   allowDecimals={false}
                 />
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: '#ffffff', 
+                    backgroundColor: resolvedTheme === 'dark' ? '#0f172a' : '#ffffff', 
                     borderRadius: '12px', 
-                    borderColor: '#e2e8f0',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                    borderColor: resolvedTheme === 'dark' ? '#1e293b' : '#e2e8f0',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)',
                     fontSize: '11px',
-                    fontFamily: 'var(--font-sans)'
+                    fontFamily: 'var(--font-sans)',
+                    color: resolvedTheme === 'dark' ? '#f1f5f9' : '#1e293b'
+                  }}
+                  itemStyle={{
+                    color: resolvedTheme === 'dark' ? '#cbd5e1' : '#475569'
+                  }}
+                  labelStyle={{
+                    color: resolvedTheme === 'dark' ? '#94a3b8' : '#64748b'
                   }}
                 />
                 <Area 
@@ -504,16 +546,16 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.25 }}
-          className="frosted-card p-5 rounded-3xl space-y-4 bg-white"
+          className="frosted-card p-5 rounded-3xl space-y-4 bg-white/45 dark:bg-slate-900/40"
         >
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
+              <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-350 uppercase tracking-widest flex items-center gap-1.5">
                 <Target className="w-4 h-4 text-violet-500" /> Monthly Trajectory Growth
               </h4>
               <p className="text-[10px] text-slate-455 mt-0.5 font-medium">Aggregated weekly progression trends</p>
             </div>
-            <span className="text-[11px] text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wide">Growing</span>
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wide">Growing</span>
           </div>
 
           <div className="h-44 w-full">
@@ -523,23 +565,30 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
                   dataKey="weekLabel" 
                   tickLine={false} 
                   axisLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 650 }}
+                  tick={{ fill: resolvedTheme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 650 }}
                 />
                 <YAxis 
                   tickLine={false} 
                   axisLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 650 }}
+                  tick={{ fill: resolvedTheme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 650 }}
                   allowDecimals={false}
                 />
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: '#ffffff', 
+                    backgroundColor: resolvedTheme === 'dark' ? '#0f172a' : '#ffffff', 
                     borderRadius: '12px', 
-                    borderColor: '#e2e8f0',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                    borderColor: resolvedTheme === 'dark' ? '#1e293b' : '#e2e8f0',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)',
                     fontSize: '11px',
-                    fontFamily: 'var(--font-sans)'
+                    fontFamily: 'var(--font-sans)',
+                    color: resolvedTheme === 'dark' ? '#f1f5f9' : '#1e293b'
                   }} 
+                  itemStyle={{
+                    color: resolvedTheme === 'dark' ? '#cbd5e1' : '#475569'
+                  }}
+                  labelStyle={{
+                    color: resolvedTheme === 'dark' ? '#94a3b8' : '#64748b'
+                  }}
                 />
                 <Line 
                   type="monotone" 
@@ -564,9 +613,9 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
         >
           <div>
             <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-orange-500" /> Consistency Heatmap Matrix
+              <Calendar className="w-4 h-4 text-orange-500" /> Calendar of Steady Practice
             </h4>
-            <p className="text-[10px] text-slate-450 mt-0.5 font-medium">Visual density matrix of the past 28 calendar days</p>
+            <p className="text-[10px] text-slate-450 mt-0.5 font-medium">A visual story of your dedication over the past 28 days</p>
           </div>
 
           {/* 4x7 grid representing 4 trailing weeks */}
@@ -627,18 +676,18 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
         <div className="flex items-center justify-between">
           <div>
             <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
-              <Award className="w-4 h-4 text-indigo-500" /> Category Mastery & Multi-Streaks
+              <Award className="w-4 h-4 text-indigo-500" /> Growth Fields & Shared Streaks
             </h4>
-            <p className="text-[10px] text-slate-405 mt-0.5 font-medium">Performance index, check-in activity, and streaks grouped by category</p>
+            <p className="text-[10px] text-slate-405 mt-0.5 font-medium">Observe which fields of life you are nurturing with regular dedication</p>
           </div>
-          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider bg-slate-100/50 px-2 py-0.5 rounded-full">{categoryStats.length} major categories</span>
+          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider bg-slate-100/50 px-2 py-0.5 rounded-full">{categoryStats.length} domains</span>
         </div>
 
         {categoryStats.length === 0 ? (
           <div className="frosted-card p-6 rounded-3xl text-center space-y-2">
             <Activity className="w-8 h-8 text-indigo-400 mx-auto" />
-            <p className="text-xs font-extrabold text-slate-800">No Category Data Yet</p>
-            <p className="text-[10px] text-slate-400">Create goals associated with categories to populate grouping insights.</p>
+            <p className="text-xs font-extrabold text-slate-800">Fields of Growth are Unwritten</p>
+            <p className="text-[10px] text-slate-400">Once you define and log practices under different categories, your growth fields will appear here.</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3.5">
@@ -849,9 +898,9 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ goals, profile, 
       <div className="p-4 rounded-3xl bg-indigo-50/40 backdrop-blur-md border border-indigo-200/50 flex gap-3 items-start text-left">
         <Sparkles className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0 animate-pulse" />
         <div>
-          <h4 className="text-xs font-bold text-indigo-950">Consistency builds Destiny</h4>
+          <h4 className="text-xs font-bold text-indigo-950">Consistency is a Quiet Triumph</h4>
           <p className="text-[10px] text-slate-600 leading-relaxed mt-0.5">
-            Your aggregate check-in rate is tracking nicely. Consistent small actions are mathematically compound. Keep fuel on your {profile.stats.globalStreak}-day streak!
+            Every small step you record compounds over time. Celebrate showing up today, and honor your {profile.stats.globalStreak}-day momentum.
           </p>
         </div>
       </div>

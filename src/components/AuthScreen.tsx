@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { TracktionLogo } from './TracktionLogo';
 
 export default function AuthScreen() {
   const { login, signup, resetPassword } = useAuth();
@@ -147,21 +148,20 @@ export default function AuthScreen() {
   };
 
   const renderWelcomeHeader = () => {
-    let title = 'Welcome to Tracktion';
-    let subtitle = 'Sustain streaks, elevate habits';
+    let title = 'Welcome back, friend';
+    let subtitle = "Take a breath. Let's cultivate your alignment today.";
     if (activeTab === 'signup') {
-      title = 'Shape your Identity';
-      subtitle = 'Join to log your accomplishments';
+      title = 'Begin your journey';
+      subtitle = 'We are here to help you stay honest, steady, and capable.';
     } else if (activeTab === 'forgot_password') {
-      title = 'Retrieve Password';
-      subtitle = 'Recover your streak dashboard';
+      title = 'Restore your space';
+      subtitle = 'Get back to alignment and consistency.';
     }
 
     return (
       <div className="text-center space-y-2 mt-4">
-        <div className="h-14 w-14 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-lg shadow-indigo-500/20 mx-auto relative group">
-          <div className="absolute inset-0 bg-indigo-500 rounded-3xl blur-md opacity-40 group-hover:opacity-60 transition-all duration-300" />
-          <Flame className="w-8 h-8 text-white relative z-10 animate-pulse-glow" />
+        <div className="relative group flex justify-center">
+          <TracktionLogo size={64} className="hover:scale-110 transition-transform duration-300" />
         </div>
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">{title}</h1>
         <p className="text-xs text-slate-500 font-semibold">{subtitle}</p>
@@ -353,7 +353,7 @@ export default function AuthScreen() {
               <>
                 <Sparkles className="w-4 h-4 text-indigo-400" />
                 <span>
-                  {activeTab === 'login' ? 'Authenticate' : activeTab === 'signup' ? 'Create Account' : 'Dispatch Email'}
+                  {activeTab === 'login' ? 'Restore Rhythm' : activeTab === 'signup' ? 'Begin My Path' : 'Send Restorative Link'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
               </>
@@ -365,14 +365,14 @@ export default function AuthScreen() {
         {activeTab !== 'forgot_password' && (
           <div className="text-center pt-2">
             <span className="text-xs text-slate-400 font-semibold">
-              {activeTab === 'login' ? "New around here? " : "Already tracking habits? "}
+              {activeTab === 'login' ? "First time here? " : "Returning to your practice? "}
             </span>
             <button
               type="button"
               onClick={() => toggleTab(activeTab === 'login' ? 'signup' : 'login')}
               className="text-xs text-indigo-600 hover:text-indigo-800 font-extrabold tracking-tight transition-all"
             >
-              {activeTab === 'login' ? 'Sign Up Free' : 'Sign In'}
+              {activeTab === 'login' ? 'Create a Free Space' : 'Restore My Session'}
             </button>
           </div>
         )}

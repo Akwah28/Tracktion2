@@ -193,9 +193,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               <span className="absolute text-xs bottom-0.5 right-0.5 animate-bounce">✨</span>
             </div>
             <div>
-              <h4 className="text-xs font-black text-slate-800">Your Minds are Clean</h4>
+              <h4 className="text-xs font-black text-slate-800">A Peaceful Space</h4>
               <p className="text-[10.5px] text-slate-400 mt-1 max-w-xs leading-relaxed">
-                No alerts pending! Your consistency checks are complete, streaks are shielded, and habits are progressing beautifully.
+                All quiet here. Your focus is aligned, your streaks are safe, and your daily intentions are beautifully clear.
               </p>
             </div>
           </div>

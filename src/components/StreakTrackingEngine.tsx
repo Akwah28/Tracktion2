@@ -153,7 +153,7 @@ export const StreakTrackingEngine: React.FC<StreakTrackingEngineProps> = ({
     const isCompletedToday = history.includes(today);
     
     if (isCompletedToday) {
-      return "Saved! You completed checklist items today to lock in your daily streak.";
+      return "Momentum secured. You've completed your daily practice today — stand proud.";
     }
 
     // Otherwise calculate hours till midnight
@@ -164,7 +164,7 @@ export const StreakTrackingEngine: React.FC<StreakTrackingEngineProps> = ({
     const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
-    return `Action required: Streak breaks in ${diffHrs}h ${diffMins}m if you don't check in or complete a task today!`;
+    return `Time is of the essence: Your daily focus is called. Secure your momentum in ${diffHrs}h ${diffMins}m with a completed action.`;
   }, [history]);
 
   return (
@@ -174,9 +174,9 @@ export const StreakTrackingEngine: React.FC<StreakTrackingEngineProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
-            <Flame className="w-4 h-4 text-orange-500 fill-orange-500" /> Consistency Spark Engine
+            <Flame className="w-4 h-4 text-orange-500 fill-orange-500" /> My Momentum Sanctum
           </h3>
-          <p className="text-[10px] text-slate-400 font-medium">Verify daily checks, gamified milestones, and automatic streak safeguards.</p>
+          <p className="text-[10px] text-slate-400 font-medium">Steward your daily practice, celebrate consistency milestones, and protect your inner fire.</p>
         </div>
         <span className="text-[9px] text-orange-600 bg-orange-50 border border-orange-100 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
           Best Streak: {bestOverallStreak}d

@@ -21,6 +21,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile, Goal } from '../types';
 import { CATEGORIES } from '../sampleData';
+import { ThemeToggle } from './ThemeToggle';
 
 interface ProfileSettingsProps {
   profile: UserProfile;
@@ -312,29 +313,29 @@ export default function ProfileSettings({
               placeholder="e.g. John Doe"
               maxLength={48}
               required
-              className="w-full text-xs font-bold leading-none p-3.5 bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-slate-100 rounded-2xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500/20"
+              className="w-full text-xs font-bold leading-none p-3.5 bg-slate-50/50 hover:bg-slate-55 dark:bg-slate-900/50 dark:hover:bg-slate-900 focus:bg-white dark:focus:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500/20"
             />
           </div>
 
           {/* Main category focus selection */}
           <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-550 font-bold block flex items-center gap-1.5">
+            <label className="text-[10px] text-slate-550 dark:text-slate-400 font-bold block flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-slate-400" /> Main Habit Theme Focus
             </label>
             <select
               value={preferredCategory}
               onChange={(e) => setPreferredCategory(e.target.value)}
-              className="w-full text-xs font-bold leading-none p-3.5 bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-slate-100 rounded-2xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+              className="w-full text-xs font-bold leading-none p-3.5 bg-slate-50/50 hover:bg-slate-55 dark:bg-slate-900/50 dark:hover:bg-slate-900 focus:bg-white dark:focus:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500/20 appearance-none cursor-pointer"
             >
               {CATEGORIES.map(cat => (
-                <option key={cat.name} value={cat.name}>{cat.name}</option>
+                <option key={cat.name} value={cat.name} className="dark:bg-slate-900">{cat.name}</option>
               ))}
             </select>
           </div>
 
           {/* Weekly goals targets */}
           <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-550 font-bold block flex items-center gap-1.5">
+            <label className="text-[10px] text-slate-550 dark:text-slate-400 font-bold block flex items-center gap-1.5">
               <Target className="w-3.5 h-3.5 text-slate-400" /> Target Habits per Week
             </label>
             <div className="flex items-center gap-3">
@@ -344,11 +345,20 @@ export default function ProfileSettings({
                 max={20}
                 value={weeklyGoalCount}
                 onChange={(e) => setWeeklyGoalCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-                className="w-24 text-xs font-bold leading-none p-3.5 bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-slate-100 rounded-2xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500/20 text-center"
+                className="w-24 text-xs font-bold leading-none p-3.5 bg-slate-50/50 hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-900 focus:bg-white dark:focus:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500/20 text-center"
               />
-              <span className="text-[10px] text-slate-400 font-medium">Currently building <span className="text-slate-700 font-extrabold">{habitsCount} habits</span> this week</span>
+              <span className="text-[10px] text-slate-400 font-medium">Currently building <span className="text-slate-700 dark:text-slate-300 font-extrabold">{habitsCount} habits</span> this week</span>
             </div>
           </div>
+        </div>
+
+        {/* Visual Theme Selection card */}
+        <div className="frosted-card p-5 rounded-3xl space-y-3 flex items-center justify-between">
+          <div>
+            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-350 uppercase tracking-wider">Visual Space</h4>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Customize your consistency interface</p>
+          </div>
+          <ThemeToggle />
         </div>
 
         {/* Action Buttons persistence */}
@@ -368,15 +378,15 @@ export default function ProfileSettings({
             {isSaving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>Saving Profile Data...</span>
+                <span>Anchoring changes...</span>
               </>
             ) : saveSuccess ? (
               <>
                 <Check className="w-4 h-4 text-emerald-300" />
-                <span>Saved successfully!</span>
+                <span>Your practice parameters are updated!</span>
               </>
             ) : (
-              <span>Save Profile Modifications</span>
+              <span>Honor My Updates</span>
             )}
           </button>
         </div>
@@ -388,13 +398,13 @@ export default function ProfileSettings({
         <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Completed Tracktion</span>
         
         <div className="grid grid-cols-2 gap-3 text-left">
-          <div className="p-3.5 rounded-2xl bg-white/45 border border-white/50 shadow-xs">
+          <div className="p-3.5 rounded-2xl bg-white/45 dark:bg-slate-900/40 border border-white/50 dark:border-slate-800/55 shadow-xs">
             <span className="text-[9px] text-slate-400 font-extrabold uppercase block">Completed Routine</span>
-            <span className="text-lg font-extrabold text-slate-800 mt-1 block">{completedHabitsCount} / {habitsCount}</span>
+            <span className="text-lg font-extrabold text-slate-800 dark:text-slate-100 mt-1 block">{completedHabitsCount} / {habitsCount}</span>
           </div>
-          <div className="p-3.5 rounded-2xl bg-white/45 border border-white/50 shadow-xs">
+          <div className="p-3.5 rounded-2xl bg-white/45 dark:bg-slate-900/40 border border-white/50 dark:border-slate-800/55 shadow-xs">
             <span className="text-[9px] text-slate-400 font-extrabold uppercase block">Weekly Performance</span>
-            <span className="text-lg font-extrabold text-slate-800 mt-1 block">
+            <span className="text-lg font-extrabold text-slate-800 dark:text-slate-100 mt-1 block">
               {weeklyGoalCount > 0 ? `${Math.round((habitsCount / weeklyGoalCount) * 100)}%` : '0%'}
             </span>
           </div>

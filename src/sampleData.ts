@@ -21,7 +21,7 @@ export const INITIAL_GOALS: Goal[] = [
   {
     id: 'goal-1',
     title: 'Daily Meditation',
-    description: 'Calm the mind and practice mindful breathing.',
+    description: 'Pause to center your thoughts and master quiet focus.',
     category: 'Mindfulness',
     targetValue: 15,
     currentValue: 15,
@@ -41,7 +41,7 @@ export const INITIAL_GOALS: Goal[] = [
   {
     id: 'goal-2',
     title: 'Read Books Twice',
-    description: 'Read the next chapter of Designing Systems.',
+    description: 'Absorb knowledge to feed your intellect and enrich your world.',
     category: 'Learning',
     targetValue: 20,
     currentValue: 10,
@@ -60,7 +60,7 @@ export const INITIAL_GOALS: Goal[] = [
   {
     id: 'goal-3',
     title: 'Morning Jump Run',
-    description: 'Maintain steady cardio to improve recovery rate.',
+    description: 'Awaken your vitality and feel the power of early movement.',
     category: 'Fitness',
     targetValue: 5,
     currentValue: 3,
@@ -76,7 +76,7 @@ export const INITIAL_GOALS: Goal[] = [
   {
     id: 'goal-5',
     title: '8-Glass Hydration',
-    description: 'Stay energized and focused with regular water intake.',
+    description: 'Nourish your body and keep your daily focus pristine.',
     category: 'Wellness',
     targetValue: 8,
     currentValue: 5,
@@ -95,7 +95,7 @@ export const INITIAL_GOALS: Goal[] = [
   {
     id: 'goal-4',
     title: 'UI Design Sketching',
-    description: 'Experiment with layout designs for Tracktion app.',
+    description: 'Unleash expression and give shape to new creative frontiers.',
     category: 'Creative',
     targetValue: 1,
     currentValue: 1,

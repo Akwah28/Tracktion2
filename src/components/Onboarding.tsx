@@ -32,8 +32,8 @@ const AVATARS = [
 
 const PRESET_GOALS = [
   {
-    title: 'Daily Mindfulness',
-    description: 'A 10-minute session to clear your thoughts.',
+    title: 'Quiet Mindfulness',
+    description: 'Pause to breathe. A 10-minute refuge to center your mind.',
     category: 'Mindfulness',
     targetValue: 10,
     unit: 'mins',
@@ -42,8 +42,8 @@ const PRESET_GOALS = [
     icon: 'Sparkles',
   },
   {
-    title: 'Hydration Goal',
-    description: 'Stay focused and active throughout the afternoon.',
+    title: 'Daily Hydration',
+    description: 'Nourish your body. Fuel your focus and mental energy.',
     category: 'Wellness',
     targetValue: 8,
     unit: 'glasses',
@@ -52,8 +52,8 @@ const PRESET_GOALS = [
     icon: 'Heart',
   },
   {
-    title: 'Tech Reading',
-    description: 'Keep up with modern tech trends and designs.',
+    title: 'Nourishing Reading',
+    description: 'Feed your intellect. Expand your mind on new horizons.',
     category: 'Learning',
     targetValue: 15,
     unit: 'pages',
@@ -62,8 +62,8 @@ const PRESET_GOALS = [
     icon: 'BookOpen',
   },
   {
-    title: 'Creative Sketching',
-    description: 'Doodle, brainstorm layout sketches, or practice writing.',
+    title: 'Creative Play',
+    description: 'Express your ideas. Let your mind explore and design.',
     category: 'Creative',
     targetValue: 20,
     unit: 'mins',
@@ -72,8 +72,8 @@ const PRESET_GOALS = [
     icon: 'PenTool',
   },
   {
-    title: 'Active Cardio',
-    description: 'A brisk walk or high-intensity interval training.',
+    title: 'Vibrant Movement',
+    description: 'Honor your physical strength. Breathe deep and build power.',
     category: 'Fitness',
     targetValue: 4,
     unit: 'km',
@@ -175,11 +175,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           Tracktion
         </h1>
         <p className="text-indigo-600 font-medium text-sm mb-6 uppercase tracking-widest">
-          Actionable Consistency
+          A Practice of Self-Discipline
         </p>
 
         <p className="text-slate-600 max-w-sm text-base leading-relaxed mb-6">
-          Sustain daily streaks, measure habit percentages, and systematically hit your core aspirations with elegant mobile-first design.
+          Consistency is a quiet, deliberate habit. Build your momentum, focus on daily practices, and honor your inner commitments with elegant design.
         </p>
 
         {/* Dynamic highlights */}
@@ -187,12 +187,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           <div className="p-3 rounded-2xl frosted-card shadow-sm">
             <Flame className="w-5 h-5 text-orange-500 mb-1" />
             <h4 className="text-xs font-bold text-slate-800">Streak Engine</h4>
-            <p className="text-[10px] text-slate-500">Auto-calculated daily flows</p>
+            <p className="text-[10px] text-slate-500">Safeguard your momentum</p>
           </div>
           <div className="p-3 rounded-2xl frosted-card shadow-sm">
             <TrendingUp className="w-5 h-5 text-emerald-500 mb-1" />
-            <h4 className="text-xs font-bold text-slate-800">Progress Tracker</h4>
-            <p className="text-[10px] text-slate-500">Fractional logs & logs detail</p>
+            <h4 className="text-xs font-bold text-slate-800">Progress Track</h4>
+            <p className="text-[10px] text-slate-500">Celebrate tiny milestones</p>
           </div>
         </div>
       </div>
@@ -202,7 +202,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           onClick={handleNext}
           className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white font-semibold py-4 px-6 rounded-2xl shadow-lg hover:bg-slate-800 transition-all duration-200 group active:scale-[0.98]"
         >
-          Begin Setup
+          Set Your Intentions
           <ArrowRight className="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform" />
         </button>
         <p className="text-center text-xs text-slate-400 mt-3 font-medium">Takes less than 1 minute</p>
@@ -225,28 +225,28 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           <div className="h-1.5 w-1/3 bg-slate-200 rounded-full" />
         </div>
 
-        <h2 className="text-2xl font-bold text-slate-900 mb-1">Tell us about yourself</h2>
-        <p className="text-sm text-slate-500 mb-6">Let's craft your personal goal identity.</p>
+        <h2 className="text-2xl font-bold text-slate-900 mb-1">Who is embarking on this path?</h2>
+        <p className="text-sm text-slate-500 mb-6">Let's personalize your consistency dashboard.</p>
 
         {/* Form elements */}
         <div className="space-y-6">
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Your Name
+              What should we call you?
             </label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Alex Rivera"
+              placeholder="Your name or nickname"
               className="w-full frosted-input rounded-2xl py-3.5 px-4 text-slate-800 placeholder-slate-400 focus:outline-none transition-all shadow-xs font-medium"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-              Choose Avatar Accent
+              Select Your Visual Symbol
             </label>
             <div className="grid grid-cols-4 gap-3 bg-slate-100/30 backdrop-blur-xs p-3 rounded-3xl border border-white/50">
               {AVATARS.map((av) => (
@@ -265,7 +265,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               ))}
             </div>
             <p className="text-center text-xs text-slate-400 mt-2">
-              The Selected identity <span className="font-semibold text-slate-700">{selectedAvatar}</span> matches your dashboard.
+              Your chosen symbol <span className="font-semibold text-slate-700">{selectedAvatar}</span> will represent you on your daily track.
             </p>
           </div>
         </div>
@@ -277,7 +277,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           disabled={!name.trim()}
           className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white font-semibold py-4 px-6 rounded-2xl shadow-lg transition-all duration-200 group active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Continue
+          Let's Set Focus
           <ArrowRight className="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
@@ -299,8 +299,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           <div className="h-1.5 w-1/3 bg-slate-200 rounded-full" />
         </div>
 
-        <h2 className="text-2xl font-bold text-slate-900 mb-1">Core Focus Areas</h2>
-        <p className="text-sm text-slate-500 mb-6">Which elements of life do you want to elevate?</p>
+        <h2 className="text-2xl font-bold text-slate-900 mb-1">Choose Your Pillars of Discipline</h2>
+        <p className="text-sm text-slate-500 mb-6">Which areas of your life want to nurture with steady consistency?</p>
 
         <div className="grid grid-cols-2 gap-3">
           {CATEGORIES.map((cat) => {
@@ -337,7 +337,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           onClick={handleNext}
           className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white font-semibold py-4 px-6 rounded-2xl shadow-lg transition-all duration-200 group active:scale-[0.98]"
         >
-          Setup Habit Presets
+          Nurture Foundational Habits
           <ArrowRight className="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
@@ -359,8 +359,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           <div className="h-1.5 w-1/3 bg-indigo-600 /10 bg-indigo-600 rounded-full" />
         </div>
 
-        <h2 className="text-2xl font-bold text-slate-900 mb-1">Recommended Starters</h2>
-        <p className="text-sm text-slate-500 mb-6">Build physical & mental traction right from the gates.</p>
+        <h2 className="text-2xl font-bold text-slate-900 mb-1">Foundational Practices</h2>
+        <p className="text-sm text-slate-500 mb-6">Select a few gentle starter practices to kindle your daily momentum.</p>
 
         <div className="space-y-3">
           {PRESET_GOALS.map((preset, idx) => {
@@ -404,7 +404,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           onClick={handleNext}
           className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold py-4 px-6 rounded-2xl shadow-lg transition-all duration-200 hover:opacity-95 active:scale-[0.98]"
         >
-          Let's Track!
+          Embrace My Path
           <ChevronRight className="w-5 h-5 text-white" />
         </button>
       </div>

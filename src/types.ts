@@ -25,6 +25,9 @@ export interface Goal {
   deadline?: string; // YYYY-MM-DD
   priority?: 'low' | 'medium' | 'high';
   difficulty?: 'easy' | 'medium' | 'hard';
+  isRecurring?: boolean;
+  recurringDays?: string[];
+  scheduledDate?: string;
 }
 
 export interface UserStats {
@@ -52,4 +55,16 @@ export interface GoalTask {
   value: number; // Increment added to goal's currentValue on completion
   date: string; // Associated date (e.g., YYYY-MM-DD)
   createdAt: string;
+}
+
+export interface JournalEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  mood: string; // "peaceful" | "inspired" | "focused" | "tired" | "neutral" | "anxious" | "happy"
+  productivity: number; // 0-100 percentage or visual scale index
+  thoughts: string; // Freeform notes
+  lessons?: string; // What was learned or gained
+  celebrations?: string; // What was handled well / small celebrations
+  createdAt: string;
+  updatedAt: string;
 }
