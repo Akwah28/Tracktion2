@@ -8,6 +8,9 @@ import {
   Plus, 
   Search, 
   ChevronRight, 
+  ChevronLeft, 
+  Minimize2,
+  Maximize2,
   Check, 
   Sparkles, 
   Calendar,
@@ -159,6 +162,8 @@ export default function App() {
   const [isCreatingGoal, setIsCreatingGoal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | undefined>(undefined);
   const [selectedPlannerDate, setSelectedPlannerDate] = useState<Date | null>(null);
+  const [plannerViewMode, setPlannerViewMode] = useState<'weekly' | 'monthly'>('weekly');
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => new Date());
   const [sharingGoal, setSharingGoal] = useState<Goal | null>(null);
 
   // Search & Filter state
@@ -198,6 +203,43 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [errorMessage]);
+
+  // Memoized builder for 35 or 42 grid dates in monthly calendar
+  const monthlyPlannerDays = useMemo(() => {
+    const year = currentMonthDate.getFullYear();
+    const month = currentMonthDate.getMonth();
+
+    const firstDay = new Date(year, month, 1);
+    const dayOfWeek = firstDay.getDay(); // 0 = Sun, 1 = Mon ...
+    const startPadding = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const totalPrevDays = new Date(year, month, 0).getDate();
+
+    const days = [];
+
+    // Pre-padding from previous month
+    for (let i = startPadding - 1; i >= 0; i--) {
+      const d = new Date(year, month - 1, totalPrevDays - i);
+      days.push({ date: d, isCurrentMonth: false });
+    }
+
+    // Days list of current active month
+    for (let i = 1; i <= totalDays; i++) {
+      const d = new Date(year, month, i);
+      days.push({ date: d, isCurrentMonth: true });
+    }
+
+    // Post-padding from next month to fill grid of 7 columns
+    const totalCells = Math.ceil(days.length / 7) * 7;
+    const postPadding = totalCells - days.length;
+    for (let i = 1; i <= postPadding; i++) {
+      const d = new Date(year, month + 1, i);
+      days.push({ date: d, isCurrentMonth: false });
+    }
+
+    return days;
+  }, [currentMonthDate]);
 
   // Validate Connection to Firestore on initial boot
   useEffect(() => {
@@ -1202,115 +1244,276 @@ export default function App() {
               </div>
 
               {/* Habit calendar tracker streak indicator bar - Updated to Weekly Planner */}
-              <div className="frosted-card p-4 rounded-3xl space-y-2.5">
+              <div className="frosted-card p-4 rounded-3xl space-y-2.5 transition-all">
                 <div className="flex items-center justify-between px-1">
                   <span className="text-[10px] text-slate-450 dark:text-slate-400 font-extrabold uppercase tracking-widest flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-indigo-500" /> Weekly Planner
+                    <Calendar className="w-3.5 h-3.5 text-indigo-500" /> {plannerViewMode === 'weekly' ? 'Weekly Planner' : 'Monthly Planner'}
                   </span>
-                  <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100/50 py-0.5 px-2 rounded-full">
-                    Mon – Sun view
-                  </span>
-                </div>
- 
-                <div className="grid grid-cols-7 gap-1">
-                  {(() => {
-                    const today = new Date();
-                    const currentDay = today.getDay();
-                    const distToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-                    const mondayDate = new Date();
-                    mondayDate.setDate(today.getDate() + distToMonday);
-
-                    return Array.from({ length: 7 }).map((_, idx) => {
-                      const dateObj = new Date(mondayDate);
-                      dateObj.setDate(mondayDate.getDate() + idx);
-                      const dateString = dateObj.toISOString().split('T')[0];
-                      const dayInitial = dateObj.toLocaleDateString('en-US', { weekday: 'narrow' });
-                      const isTodayString = today.toISOString().split('T')[0] === dateString;
-
-                      // Filter active goals on this weekday
-                      const activeGroup = goals.filter((g) => {
-                        if (g.scheduledDate) {
-                          return g.scheduledDate === dateString;
-                        }
-                        if (g.isRecurring) {
-                          const dayShort = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                          return !!g.recurringDays?.includes(dayShort);
-                        }
-                        if (g.frequency === 'daily') {
-                          return true;
-                        }
-                        return false;
-                      });
-
-                      const totalActive = activeGroup.length;
-                      const completedCount = activeGroup.filter((g) => {
-                        const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
-                        return prog >= g.targetValue;
-                      }).length;
-
-                      const isAllCompleted = totalActive > 0 && completedCount === totalActive;
-                      const hasPartialCompletion = totalActive > 0 && completedCount > 0;
-
-                      return (
-                        <div 
-                          key={idx} 
-                          onClick={() => setSelectedPlannerDate(dateObj)}
-                          className="flex flex-col items-center gap-1.5 cursor-pointer group select-none relative"
+                  
+                  {/* Controls header section */}
+                  <div className="flex items-center gap-2">
+                    {/* Add beautiful Month browses when in Monthly view */}
+                    {plannerViewMode === 'monthly' && (
+                      <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800/40 p-0.5 rounded-xl border border-slate-200/10">
+                        <button
+                          onClick={() => {
+                            const newDate = new Date(currentMonthDate);
+                            newDate.setMonth(currentMonthDate.getMonth() - 1);
+                            setCurrentMonthDate(newDate);
+                          }}
+                          className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+                          title="Previous Month"
                         >
-                          <span className={`text-[10px] font-bold ${isTodayString ? 'text-indigo-600 dark:text-indigo-400 font-extrabold' : 'text-slate-450 dark:text-slate-500'}`}>
-                            {dayInitial}
-                          </span>
-                          
-                          {/* Date circle */}
+                          <ChevronLeft className="w-3 h-3" />
+                        </button>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 px-1 select-none">
+                          {currentMonthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                        </span>
+                        <button
+                          onClick={() => {
+                            const newDate = new Date(currentMonthDate);
+                            newDate.setMonth(currentMonthDate.getMonth() + 1);
+                            setCurrentMonthDate(newDate);
+                          }}
+                          className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+                          title="Next Month"
+                        >
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Mode Toggle Selector */}
+                    <div className="flex bg-slate-100 dark:bg-slate-800/40 p-0.5 rounded-xl border border-slate-200/10">
+                      <button
+                        onClick={() => setPlannerViewMode('weekly')}
+                        className={`px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                          plannerViewMode === 'weekly'
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-3xs'
+                            : 'text-slate-450 dark:text-slate-550 hover:text-slate-650'
+                        }`}
+                      >
+                        Weekly
+                      </button>
+                      <button
+                        onClick={() => setPlannerViewMode('monthly')}
+                        className={`px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                          plannerViewMode === 'monthly'
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-3xs'
+                            : 'text-slate-450 dark:text-slate-550 hover:text-slate-650'
+                        }`}
+                      >
+                        Monthly
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {plannerViewMode === 'weekly' ? (
+                  /* WEEKLY VIEW (Default) */
+                  <div className="grid grid-cols-7 gap-1">
+                    {(() => {
+                      const today = new Date();
+                      const currentDay = today.getDay();
+                      const distToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+                      const mondayDate = new Date();
+                      mondayDate.setDate(today.getDate() + distToMonday);
+
+                      return Array.from({ length: 7 }).map((_, idx) => {
+                        const dateObj = new Date(mondayDate);
+                        dateObj.setDate(mondayDate.getDate() + idx);
+                        const dateString = dateObj.toISOString().split('T')[0];
+                        const dayInitial = dateObj.toLocaleDateString('en-US', { weekday: 'narrow' });
+                        const isTodayString = today.toISOString().split('T')[0] === dateString;
+
+                        // Filter active goals on this weekday
+                        const activeGroup = goals.filter((g) => {
+                          if (g.scheduledDate) {
+                            return g.scheduledDate === dateString;
+                          }
+                          if (g.isRecurring) {
+                            const dayShort = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                            return !!g.recurringDays?.includes(dayShort);
+                          }
+                          if (g.frequency === 'daily') {
+                            return true;
+                          }
+                          return false;
+                        });
+
+                        const totalActive = activeGroup.length;
+                        const completedCount = activeGroup.filter((g) => {
+                          const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
+                          return prog >= g.targetValue;
+                        }).length;
+
+                        const isAllCompleted = totalActive > 0 && completedCount === totalActive;
+                        const hasPartialCompletion = totalActive > 0 && completedCount > 0;
+
+                        return (
                           <div 
-                            className={`h-9 w-9 xl:h-11 xl:w-11 rounded-2xl flex flex-col items-center justify-center border transition-all relative ${
-                              isAllCompleted 
-                                ? 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400 text-white shadow-xs' 
-                                : isTodayString 
-                                  ? 'bg-indigo-50/15 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-black' 
-                                  : hasPartialCompletion
-                                    ? 'bg-indigo-50/40 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-900/60 text-slate-700 dark:text-slate-300'
-                                    : 'bg-white/45 dark:bg-slate-900/40 border-slate-100 dark:border-slate-850/50 text-slate-450 dark:text-slate-400 hover:border-slate-200'
+                            key={idx} 
+                            onClick={() => setSelectedPlannerDate(dateObj)}
+                            className="flex flex-col items-center gap-1.5 cursor-pointer group select-none relative"
+                          >
+                            <span className={`text-[10px] font-bold ${isTodayString ? 'text-indigo-600 dark:text-indigo-400 font-extrabold' : 'text-slate-450 dark:text-slate-500'}`}>
+                              {dayInitial}
+                            </span>
+                            
+                            {/* Date circle */}
+                            <div 
+                              className={`h-9 w-9 xl:h-11 xl:w-11 rounded-2xl flex flex-col items-center justify-center border transition-all relative ${
+                                isAllCompleted 
+                                  ? 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400 text-white shadow-xs' 
+                                  : isTodayString 
+                                    ? 'bg-indigo-50/15 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-black' 
+                                    : hasPartialCompletion
+                                      ? 'bg-indigo-50/40 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-900/60 text-slate-700 dark:text-slate-300'
+                                      : 'bg-white/45 dark:bg-slate-900/40 border-slate-100 dark:border-slate-850/50 text-slate-450 dark:text-slate-400 hover:border-slate-200'
+                              }`}
+                            >
+                              <span className="text-[10.5px] font-bold">{dateObj.getDate()}</span>
+                            </div>
+
+                            {/* Goals indicators inside cell */}
+                            <div className="flex gap-0.5 justify-center h-1.5 w-full">
+                              {activeGroup.slice(0, 4).map((g, gi) => {
+                                const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
+                                const gCompleted = prog >= g.targetValue;
+                                const dotColorClass = {
+                                  emerald: 'bg-emerald-500',
+                                  indigo: 'bg-indigo-500',
+                                  rose: 'bg-rose-500',
+                                  amber: 'bg-amber-500',
+                                  violet: 'bg-violet-500',
+                                  sky: 'bg-sky-500',
+                                }[g.color] || 'bg-slate-450';
+
+                                return (
+                                  <div 
+                                    key={gi}
+                                    className={`h-1 w-1 rounded-full transition-all ${
+                                      gCompleted 
+                                        ? `${dotColorClass} scale-110 opacity-100` 
+                                        : `${dotColorClass} opacity-35 dark:opacity-20`
+                                    }`}
+                                    title={g.title}
+                                  />
+                                );
+                              })}
+                              {activeGroup.length > 4 && (
+                                <span className="text-[6px] leading-[4px] font-extrabold text-slate-400 block">+</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                ) : (
+                  /* EXPANDED MONTHLY VIEW */
+                  <div className="space-y-2">
+                    {/* Weekday labels */}
+                    <div className="grid grid-cols-7 gap-1 text-center border-b border-slate-100/50 dark:border-slate-800/40 pb-1">
+                      {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, idx) => (
+                        <span key={idx} className="text-[9.5px] font-extrabold tracking-wider text-slate-400 dark:text-slate-500 uppercase">
+                          {day}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Month cells grid */}
+                    <div className="grid grid-cols-7 gap-1">
+                      {monthlyPlannerDays.map(({ date: dateObj, isCurrentMonth }, idx) => {
+                        const today = new Date();
+                        const dateString = dateObj.toISOString().split('T')[0];
+                        const isTodayString = today.toISOString().split('T')[0] === dateString;
+
+                        // Filter active goals on this weekday
+                        const activeGroup = goals.filter((g) => {
+                          if (g.scheduledDate) {
+                            return g.scheduledDate === dateString;
+                          }
+                          if (g.isRecurring) {
+                            const dayShort = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                            return !!g.recurringDays?.includes(dayShort);
+                          }
+                          if (g.frequency === 'daily') {
+                            return true;
+                          }
+                          return false;
+                        });
+
+                        const totalActive = activeGroup.length;
+                        const completedCount = activeGroup.filter((g) => {
+                          const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
+                          return prog >= g.targetValue;
+                        }).length;
+
+                        const isAllCompleted = totalActive > 0 && completedCount === totalActive;
+                        const hasPartialCompletion = totalActive > 0 && completedCount > 0;
+
+                        return (
+                          <div 
+                            key={idx} 
+                            onClick={() => setSelectedPlannerDate(dateObj)}
+                            className={`flex flex-col items-center gap-1 cursor-pointer group select-none relative p-1 rounded-2xl transition-all ${
+                              isCurrentMonth 
+                                ? 'opacity-100' 
+                                : 'opacity-30 hover:opacity-60'
                             }`}
                           >
-                            <span className="text-[10.5px] font-bold">{dateObj.getDate()}</span>
-                          </div>
+                            {/* Date circle/box for month view */}
+                            <div 
+                              className={`h-8 w-8 rounded-xl flex flex-col items-center justify-center border transition-all relative ${
+                                isAllCompleted 
+                                  ? 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400 text-white shadow-3xs' 
+                                  : isTodayString 
+                                    ? 'bg-indigo-50/15 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-black' 
+                                    : hasPartialCompletion
+                                      ? 'bg-indigo-50/30 dark:bg-indigo-950/5 border-indigo-150 dark:border-indigo-900/40 text-slate-700 dark:text-slate-300'
+                                      : 'bg-white/45 dark:bg-slate-900/35 border-slate-100/70 dark:border-slate-850/40 text-slate-450 dark:text-slate-400 hover:border-slate-250'
+                              }`}
+                            >
+                              <span className="text-[10px] font-bold">{dateObj.getDate()}</span>
+                            </div>
 
-                          {/* Goals indicators inside cell */}
-                          <div className="flex gap-0.5 justify-center h-1.5 w-full">
-                            {activeGroup.slice(0, 4).map((g, gi) => {
-                              const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
-                              const gCompleted = prog >= g.targetValue;
-                              const dotColorClass = {
-                                emerald: 'bg-emerald-500',
-                                indigo: 'bg-indigo-500',
-                                rose: 'bg-rose-500',
-                                amber: 'bg-amber-500',
-                                violet: 'bg-violet-500',
-                                sky: 'bg-sky-500',
-                              }[g.color] || 'bg-slate-450';
+                            {/* Goals indicators inside cell */}
+                            <div className="flex gap-0.5 justify-center h-1 w-full overflow-hidden">
+                              {activeGroup.slice(0, 3).map((g, gi) => {
+                                const prog = g.logs.filter(l => l.date === dateString).reduce((s, l) => s + l.value, 0);
+                                const gCompleted = prog >= g.targetValue;
+                                const dotColorClass = {
+                                  emerald: 'bg-emerald-500',
+                                  indigo: 'bg-indigo-500',
+                                  rose: 'bg-rose-500',
+                                  amber: 'bg-amber-500',
+                                  violet: 'bg-violet-500',
+                                  sky: 'bg-sky-500',
+                                }[g.color] || 'bg-slate-400';
 
-                              return (
-                                <div 
-                                  key={gi}
-                                  className={`h-1 w-1 rounded-full transition-all ${
-                                    gCompleted 
-                                      ? `${dotColorClass} scale-110 opacity-100` 
-                                      : `${dotColorClass} opacity-35 dark:opacity-20`
-                                  }`}
-                                  title={g.title}
-                                />
-                              );
-                            })}
-                            {activeGroup.length > 4 && (
-                              <span className="text-[6px] leading-[4px] font-extrabold text-slate-400 block">+</span>
-                            )}
+                                return (
+                                  <div 
+                                    key={gi}
+                                    className={`h-0.75 w-0.75 rounded-full transition-all ${
+                                      gCompleted 
+                                        ? `${dotColorClass} scale-110 opacity-100` 
+                                        : `${dotColorClass} opacity-30 dark:opacity-20`
+                                    }`}
+                                    title={g.title}
+                                  />
+                                );
+                              })}
+                              {activeGroup.length > 3 && (
+                                <span className="text-[5px] leading-[2px] font-black text-slate-400">+</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Dynamic live goals filters search block */}

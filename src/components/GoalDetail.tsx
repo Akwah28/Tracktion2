@@ -32,7 +32,6 @@ import {
 import { Goal, GoalProgressLog, GoalTask } from '../types';
 import { DynamicIcon } from './DynamicIcon';
 import { GoalTaskManager } from './GoalTaskManager';
-import { GoalJourneyMap } from './GoalJourneyMap';
 
 interface GoalDetailProps {
   goal: Goal;
@@ -66,7 +65,7 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
   const [logValue, setLogValue] = useState<number>(1);
   const [logNote, setLogNote] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'quest' | 'roadmap' | 'history'>('roadmap');
+  const [activeSubTab, setActiveSubTab] = useState<'quest' | 'history'>('quest');
 
   const percentage = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
 
@@ -196,47 +195,7 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
     ];
   }, [goal.targetValue, goal.currentValue]);
 
-  // Gamified Step-by-Step roadmap details for the quest path success
-  const roadmapSteps = useMemo(() => {
-    const steps = [
-      {
-        stepNum: 1,
-        title: 'Quest Initialization',
-        desc: 'Begin logging actions regularly. Your instant goal is making 3 consecutive entries without zero values.',
-        status: goal.logs.length > 0 ? 'completed' : 'active',
-        tip: 'Keep increment notes highly expressive so you remember the contextual physical state.'
-      },
-      {
-        stepNum: 2,
-        title: 'The Golden Core Baseline',
-        desc: `Reach ${milestones[1].reqVal} ${goal.unit} (the 30% mark). This starts setting structural brain circuits.`,
-        status: percentage >= 30 ? 'completed' : goal.logs.length > 0 ? 'active' : 'locked',
-        tip: 'Stagger increments early in the morning so you avoid late-night fatigue skips.'
-      },
-      {
-        stepNum: 3,
-        title: 'Conquer the Dead Mid-Zone',
-        desc: `Bridge 30% to the high-horizon 60% peak (${milestones[2].reqVal} ${goal.unit}). Here focus fatigue is typical.`,
-        status: percentage >= 60 ? 'completed' : percentage >= 30 ? 'active' : 'locked',
-        tip: 'When feeling weak, log micro increment of even 1. No action is too microscopic!'
-      },
-      {
-        stepNum: 4,
-        title: 'Final Boss Summit',
-        desc: `Charge towards 85%+ (${milestones[3].reqVal} ${goal.unit}). Complete critical checks and lock-in total dominance.`,
-        status: percentage >= 85 ? 'completed' : percentage >= 60 ? 'active' : 'locked',
-        tip: 'Formulate celebratory milestones. Prepare to export achievements for global display.'
-      },
-      {
-        stepNum: 5,
-        title: 'Eternal Sovereign Mastery',
-        desc: `Cross the target line of ${goal.targetValue} ${goal.unit}! The quest resets to full archive or continuous multiplier.`,
-        status: percentage >= 100 ? 'completed' : percentage >= 85 ? 'active' : 'locked',
-        tip: 'Log ultimate milestone notes. You have fully hardened this habit matrix!'
-      }
-    ];
-    return steps;
-  }, [goal.targetValue, goal.unit, percentage, milestones, goal.logs.length]);
+
 
   return (
     <div className="flex flex-col h-full bg-transparent relative z-10">
@@ -281,7 +240,7 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
       </div>
 
       {/* 2. Sub-Tabs Navigation for Gamified elements */}
-      <div className="bg-slate-50/50 p-1 border-b border-slate-100 grid grid-cols-3 gap-1">
+      <div className="bg-slate-50/50 p-1 border-b border-slate-100 grid grid-cols-2 gap-1">
         <button
           onClick={() => setActiveSubTab('quest')}
           className={`py-2 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
@@ -291,16 +250,6 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
           }`}
         >
           🎮 Quest Hall
-        </button>
-        <button
-          onClick={() => setActiveSubTab('roadmap')}
-          className={`py-2 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-            activeSubTab === 'roadmap'
-              ? 'bg-indigo-65 text-indigo-600 shadow-xs font-black'
-              : 'text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          🗺️ Success Trail
         </button>
         <button
           onClick={() => setActiveSubTab('history')}
@@ -581,113 +530,7 @@ export const GoalDetail: React.FC<GoalDetailProps> = ({
           </div>
         )}
 
-        {/* ROADMAP SUCCESS TIMELINE TAB view */}
-        {activeSubTab === 'roadmap' && (
-          <div className="space-y-6">
 
-            {/* Hand-drawn Journey Map Visual Aid */}
-            <div className="text-center pt-1">
-              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-extrabold uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1 rounded-full border border-indigo-100/50 dark:border-indigo-900/30">
-                🗺️ Interactive Journey Trail
-              </span>
-              <div className="mt-4">
-                <GoalJourneyMap goal={goal} onUpdateProgress={onUpdateProgress} />
-              </div>
-            </div>
-
-            {/* Interactive Timeline map banner */}
-            <div className="frosted-card p-5 rounded-3xl relative overflow-hidden bg-gradient-to-br from-indigo-50/40 to-white">
-              <div className="absolute top-[-25px] right-[-25px] w-24 h-24 bg-indigo-100/40 rounded-full blur-xl pointer-events-none" />
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-2xl shadow-3xs flex-shrink-0">
-                  <Map className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-widest block">Success Road Map</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal mt-0.5">
-                    Step-by-step commitment milestones layout to guarantee maximum psychological habit formation and tracking adherence.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Roadmap steppers trail */}
-            <div className="relative pl-5 left-1 space-y-7 border-l-2 border-slate-100">
-              {roadmapSteps.map((step) => {
-                const isComp = step.status === 'completed';
-                const isActive = step.status === 'active';
-                const isLock = step.status === 'locked';
-
-                return (
-                  <div key={step.stepNum} className="relative text-left">
-                    {/* Visual node bullet circle icon */}
-                    <div className={`absolute -left-[31px] top-1.5 w-5 h-5 rounded-full border-4 flex items-center justify-center transition-all ${
-                      isComp 
-                        ? 'bg-emerald-600 border-emerald-100 shadow-sm' 
-                        : isActive
-                        ? 'bg-indigo-600 border-indigo-150 animate-pulse'
-                        : 'bg-slate-200 border-white'
-                    }`}>
-                      {isComp && <Check className="w-2.5 h-2.5 text-white stroke-[3.5]" />}
-                    </div>
-
-                    <div className={`frosted-card p-4 rounded-2xl transition-all ${
-                      isActive 
-                        ? 'border-indigo-200/60 bg-white/70 shadow-sm' 
-                        : isLock
-                        ? 'opacity-65 bg-slate-50/30'
-                        : 'border-emerald-100/45'
-                    }`}>
-                      <div className="flex justify-between items-start gap-1">
-                        <div>
-                          <span className={`text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md block w-fit mb-1 border ${
-                            isComp
-                              ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
-                              : isActive
-                              ? 'bg-indigo-50 border-indigo-100 text-indigo-700 font-extrabold'
-                              : 'bg-slate-100 border-slate-100 text-slate-450'
-                          }`}>
-                            STAGE 0{step.stepNum} {step.status.toUpperCase()}
-                          </span>
-                          <h5 className="text-[11px] font-extrabold text-slate-800 leading-tight">{step.title}</h5>
-                        </div>
-                        {isLock ? (
-                          <Lock className="w-3.5 h-3.5 text-slate-350" />
-                        ) : isComp ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-indigo-500 animate-spin text-[8px]" />
-                        )}
-                      </div>
-                      
-                      <p className="text-[10px] text-slate-450 mt-1.5 leading-relaxed">{step.desc}</p>
-                      
-                      {/* Game tip box */}
-                      {!isLock && (
-                        <div className="mt-2 text-[9.5px] p-2 bg-slate-50/70 border border-slate-100/55 rounded-xl text-slate-500 font-medium flex gap-1.5 items-start">
-                          <Info className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0 mt-0.5" />
-                          <span><span className="font-extrabold text-slate-655 uppercase block text-[8px] leading-3 mb-0.5">Tactical Quest Tip:</span> {step.tip}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Boss fight final info banner */}
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-left flex gap-3">
-              <Swords className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5 animate-bounce" />
-              <div>
-                <h5 className="text-xs font-extrabold text-amber-950">Daily Final Boss Encounter</h5>
-                <p className="text-[10px] text-slate-600 leading-relaxed mt-0.5 font-medium">
-                  The ultimate final boss is inertia. Skip days only at the peril of degrading rank statistics. Lock custom logs early to preserve multiplier power!
-                </p>
-              </div>
-            </div>
-
-          </div>
-        )}
 
         {/* LEDGER TIMELINE LOGS LIST view */}
         {activeSubTab === 'history' && (
