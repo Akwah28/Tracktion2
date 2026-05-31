@@ -14,7 +14,9 @@ import {
   Upload,
   Trophy,
   Flame,
-  Award
+  Award,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, setDoc } from 'firebase/firestore';
@@ -22,6 +24,7 @@ import { db, storage, auth, handleFirestoreError, OperationType } from '../fireb
 import { UserProfile, Goal } from '../types';
 import { CATEGORIES } from '../sampleData';
 import { ThemeToggle } from './ThemeToggle';
+import { playCompletionSound } from '../utils/soundEffects';
 
 interface ProfileSettingsProps {
   profile: UserProfile;
@@ -42,6 +45,7 @@ export default function ProfileSettings({
   const [weeklyGoalCount, setWeeklyGoalCount] = useState(profile.weeklyGoalCount || 3);
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
   const [avatarSeed, setAvatarSeed] = useState(profile.avatarSeed);
+  const [soundEnabled, setSoundEnabled] = useState(profile.soundEnabled ?? true);
 
   // States
   const [isUploading, setIsUploading] = useState(false);
@@ -176,6 +180,7 @@ export default function ProfileSettings({
         avatarUrl: avatarUrl || undefined,
         preferredCategory: preferredCategory,
         weeklyGoalCount: weeklyGoalCount,
+        soundEnabled: soundEnabled,
       };
 
       // Set the updated document structure inside users/{uid}
@@ -359,6 +364,43 @@ export default function ProfileSettings({
             <p className="text-[10px] text-slate-400 font-medium mt-0.5">Customize your consistency interface</p>
           </div>
           <ThemeToggle />
+        </div>
+
+        {/* Gamification Sound Effects toggler */}
+        <div className="frosted-card p-5 rounded-3xl space-y-3 flex items-center justify-between">
+          <div className="text-left">
+            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-350 uppercase tracking-wider flex items-center gap-1.5">
+              {soundEnabled ? (
+                <Volume2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-slate-405" />
+              )}
+              <span>Gamification Audio</span>
+            </h4>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Sound feedback on completions & streak milestones</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const nextState = !soundEnabled;
+              setSoundEnabled(nextState);
+              if (nextState) {
+                // Play feedback audio trigger
+                setTimeout(() => {
+                  try { playCompletionSound(); } catch (e) {}
+                }, 100);
+              }
+            }}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              soundEnabled ? 'bg-indigo-600' : 'bg-slate-205 dark:bg-slate-800'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                soundEnabled ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
         </div>
 
         {/* Action Buttons persistence */}

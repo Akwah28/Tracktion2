@@ -530,6 +530,151 @@ Guidelines:
   return res.status(500).json({ error: "An unexpected decomposition fallback error occurred." });
 });
 
+// Heuristic fallback generator for Productivity analysis to support offline/local execution
+function getHeuristicProductivityPlan(profileName: string, goalsListText: string) {
+  return {
+    encouragement: `Keep pushing forward, ${profileName || 'Achiever'}! Remember, your efforts are compound interest for your personal growth. Even if you missed a day, showing up to review your targets today is a huge victory!`,
+    consistencyAdvice: `Make consistency easy by lowering boundaries. For your targets, schedule specific habit-stacking anchors. Connect each goal to an existing daily trigger (like morning routine or work wind-down) so you do not have to rely on active willpower.`,
+    focusRecommendations: `Clear all focus distractions beforehand. Try working on your priorities using a single-tasking timer for just 15 minutes. Protect this focus block fiercely from notification prompts or tabs.`,
+    recoverySuggestions: `Never miss twice! If you skipped a logging interval, do not worry about playing catchup. Simply execute a 'Micro-Habit' option (for example, reading just 1 page or doing a 2-minute stretch) to keep the habit spark alive.`
+  };
+}
+
+// API endpoint to analyze current status and get personalized productivity advice
+app.post("/api/coach/productivity", async (req, res) => {
+  const { profile, goals } = req.body;
+  
+  const profileName = profile?.name || 'Achiever';
+  const goalsCount = goals ? goals.length : 0;
+  
+  // Create a structured summary of the user's goals and logs to pass to the model
+  let goalsSummary = "No goals set yet. Encourage the user to create their first goal/habit.";
+  let missedDaysContext = "No history available.";
+
+  if (goals && Array.isArray(goals) && goals.length > 0) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    goalsSummary = goals.map((g: any, index: number) => {
+      const logsCount = g.logs ? g.logs.length : 0;
+      const currentVal = g.currentValue || 0;
+      const targetVal = g.targetValue || 1;
+      const unit = g.unit || 'times';
+      const lastLog = logsCount > 0 ? g.logs[logsCount - 1] : null;
+      let lastLogText = "never logged yet";
+      if (lastLog) {
+        lastLogText = `last value ${lastLog.value} on ${lastLog.date}`;
+      }
+      return `${index + 1}. "${g.title}" (${g.category}): Target is ${targetVal} ${unit}, current progress ${currentVal} ${unit}, logs count: ${logsCount}, ${lastLogText}.`;
+    }).join("\n");
+
+    // Analyze gaps or missed days (e.g. check if the last log date is in the past)
+    const logDates = goals.flatMap((g: any) => (g.logs || []).map((l: any) => l.date));
+    if (logDates.length > 0) {
+      // Find latest logged date across all goals
+      const sortedDates = [...new Set(logDates)].sort();
+      const latestDateStr = sortedDates[sortedDates.length - 1];
+      const latestLogDate = new Date(latestDateStr);
+      const today = new Date();
+      // Normalize to midnight UTC for distance checks
+      today.setUTCHours(0,0,0,0);
+      latestLogDate.setUTCHours(0,0,0,0);
+      
+      const diffMs = today.getTime() - latestLogDate.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      if (diffDays > 1) {
+        missedDaysContext = `The user last logged actions ${diffDays} days ago (on ${latestDateStr}). They have active missed days. Highlight gentle, concrete recovery advice specifically for this gap.`;
+      } else {
+        missedDaysContext = `The user is active! They last logged recently (on ${latestDateStr}). Praise their active streak and advise on maintaining standard consistency.`;
+      }
+    } else {
+      missedDaysContext = `The user has created goals but hasn't logged any actions/values yet. Encourage them to make their very first quest log today.`;
+    }
+  }
+
+  const systemPrompt = `You are Tracktion's Elite AI Productivity Coach. Your goal is to analyze the user's active goals and logging history to formulate an extremely personalized coaching advice report that covers four crucial dimensions:
+1. CUSTOM ENCOURAGEMENT: Praise any positive streaks, logs, or simply congratulate them on taking control of their trajectory. Be highly supportive, energetic, and empathetic.
+2. CONSISTENCY STRATEGY: Provide bespoke scheduling, habit-stacking, or identity-shifting consistency advice custom-fit to the user's goals.
+3. DEEP FOCUS RECOMMENDATIONS: Share concrete methods to eliminate distractions, execute deep-focus blocks, reduce friction, or handle multitasking loops for their specific habits.
+4. ACTIONABLE RECOVERY: Deliver comforting, pressure-free instructions on recovering momentum after a missed day or logging gap. Focus on micro-actions (e.g. 2-minute rule) to preserve psychological morale and sustain habit patterns.
+
+Guidelines:
+- Reference the user's actual goals by name (e.g., if they have a goal "Python study", reference "Python study").
+- Match your tone to an intelligent, supportive mentor.
+- Avoid generic filler. Keep each advice category highly actionable and specific to their active context.
+
+Format requirements:
+- Respond in JSON format matching the schema rules with exactly the properties: encouragement, consistencyAdvice, focusRecommendations, recoverySuggestions.`;
+
+  const chatInput = `User Profile: Name is "${profileName}", Target Weekly Goals Count Goal is ${profile?.weeklyGoalCount || 3}.
+Active Goals & Logs Summary:
+${goalsSummary}
+
+Missed Days & Timing Analysis:
+${missedDaysContext}`;
+
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const hasGeminiKey = geminiApiKey && geminiApiKey !== "MY_GEMINI_API_KEY";
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  const hasAnthropicKey = anthropicApiKey && anthropicApiKey !== "MY_ANTHROPIC_API_KEY";
+
+  // 1. Try Google Gemini SDK
+  if (hasGeminiKey) {
+    try {
+      console.log("[AI Productivity Coach] Querying native Google GenAI SDK...");
+      const ai = getGeminiClient();
+
+      const geminiResponseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          encouragement: { type: Type.STRING },
+          consistencyAdvice: { type: Type.STRING },
+          focusRecommendations: { type: Type.STRING },
+          recoverySuggestions: { type: Type.STRING }
+        },
+        required: ["encouragement", "consistencyAdvice", "focusRecommendations", "recoverySuggestions"]
+      };
+
+      const parsedResult = await generateContentWithGemini(ai, chatInput, systemPrompt, geminiResponseSchema);
+      return res.json(parsedResult);
+    } catch (geminiError: any) {
+      console.log(`[AI Productivity Coach] Gemini SDK failed (Reason: ${geminiError?.message || geminiError}). Falling back...`);
+    }
+  }
+
+  // 2. Try Anthropic SDK
+  if (hasAnthropicKey) {
+    try {
+      console.log("[AI Productivity Coach] Querying back-up Anthropic SDK...");
+      const client = getAnthropicClient();
+      const toolSchema = {
+        type: "object",
+        properties: {
+          encouragement: { type: "string" },
+          consistencyAdvice: { type: "string" },
+          focusRecommendations: { type: "string" },
+          recoverySuggestions: { type: "string" }
+        },
+        required: ["encouragement", "consistencyAdvice", "focusRecommendations", "recoverySuggestions"]
+      };
+
+      const parsedResult = await generateContentWithRetry(client, chatInput, systemPrompt, toolSchema);
+      return res.json(parsedResult);
+    } catch (anthropicError: any) {
+      console.log(`[AI Productivity Coach] Backup Anthropic failed (Reason: ${anthropicError?.message || anthropicError}). Falling back to heuristics...`);
+    }
+  }
+
+  // 3. Fallback to Heuristics
+  try {
+    const fallbackResult = getHeuristicProductivityPlan(profileName, goalsSummary);
+    return res.json(fallbackResult);
+  } catch (err) {
+    console.log("[AI Productivity Coach] Critical fallback failure:", err);
+  }
+
+  return res.status(500).json({ error: "Could not generate productivity response at this time." });
+});
+
 // Serve static elements or hot development server routes
 const startServer = async () => {
   if (process.env.NODE_ENV !== "production") {

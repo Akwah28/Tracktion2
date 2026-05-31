@@ -45,6 +45,7 @@ export interface UserProfile {
   stats: UserStats;
   preferredCategory?: string;
   weeklyGoalCount?: number;
+  soundEnabled?: boolean;
 }
 
 export interface GoalTask {

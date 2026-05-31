@@ -16,7 +16,9 @@ import {
   Award,
   BookMarked,
   Sliders,
-  AlertCircle
+  AlertCircle,
+  Shuffle,
+  Quote
 } from 'lucide-react';
 import { JournalEntry, UserProfile } from '../types';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -45,6 +47,45 @@ const MOODS: MoodOption[] = [
   { value: 'happy', emoji: '😊', label: 'Happy', color: 'text-rose-500 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-950/40 border-rose-100 dark:border-rose-900/40' },
 ];
 
+interface Affirmation {
+  text: string;
+  source: string;
+  category: string;
+}
+
+const AFFIRMATIONS: Affirmation[] = [
+  { text: "The secret of your future is hidden in your daily routine.", source: "Mike Murdock", category: "Consistency" },
+  { text: "You do not rise to the level of your goals. You fall to the level of your systems.", source: "James Clear", category: "Focus" },
+  { text: "Action is the foundational key to all success.", source: "Pablo Picasso", category: "Consistency" },
+  { text: "It is not that we have a short time to live, but that we waste a lot of it.", source: "Seneca", category: "Mindset" },
+  { text: "Small daily improvements over time lead to stunning results.", source: "Robin Sharma", category: "Growth" },
+  { text: "Focus is a muscle, and you are building a masterpiece one rep at a time.", source: "Tracky", category: "Focus" },
+  { text: "Patience with yourself is a form of power. Great things compound in silence.", source: "Tracky", category: "Growth" },
+  { text: "The only limit to our realization of tomorrow is our doubts of today.", source: "Franklin D. Roosevelt", category: "Mindset" },
+  { text: "Energy flows where focus goes. Lock onto your intentions.", source: "Tony Robbins", category: "Focus" },
+  { text: "Your daily actions are votes for the person you wish to become.", source: "James Clear", category: "Consistency" },
+  { text: "Do not wait for perfect conditions. Start where you are, with what you have.", source: "Arthur Ashe", category: "Courage" },
+];
+
+const PERSONAL_MESSAGES = [
+  (name: string) => `You are doing amazing, ${name}! Take a deep breath and keep your weekly targets in clear focus today.`,
+  (name: string) => `Consistency is your superpower, ${name}. Every step you take today is a solid brick on your path.`,
+  (name: string) => `Hello, ${name}! Remember to celebrate your microscopic progress. Small steps count just as much as giant leaps.`,
+  (name: string) => `Stay steady, ${name}. Your future self is already thanking you for showing up today.`,
+  (name: string) => `Take it one task at a time, ${name}. Deep work is calling, and you are fully capable of achieving flow.`,
+  (name: string) => `Remember, ${name}: a missed day is just data, not a failure. Tomorrow is a brand new page.`,
+  (name: string) => `Unleash your intention today, ${name}. You possess the quiet focus needed to reach your dreams.`
+];
+
+const getDailyIndex = (max: number) => {
+  const todayStr = new Date().toISOString().split('T')[0];
+  let hash = 0;
+  for (let i = 0; i < todayStr.length; i++) {
+    hash += todayStr.charCodeAt(i);
+  }
+  return hash % max;
+};
+
 export const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ user, profile }) => {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +103,66 @@ export const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ user, prof
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'dirty' | 'idle'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Daily Affirmation State
+  const [affirmation, setAffirmation] = useState<{
+    text: string;
+    source: string;
+    category: string;
+    isPersonalized: boolean;
+  } | null>(null);
+
+  const getDayAffirmation = useCallback(() => {
+    const totalAffirmations = AFFIRMATIONS.length;
+    const totalPersonal = PERSONAL_MESSAGES.length;
+    const hash = getDailyIndex(totalAffirmations + totalPersonal);
+    
+    if (hash < totalAffirmations) {
+      const aff = AFFIRMATIONS[hash];
+      return {
+        text: aff.text,
+        source: aff.source,
+        category: aff.category,
+        isPersonalized: false
+      };
+    } else {
+      const pIdx = hash - totalAffirmations;
+      const msgGen = PERSONAL_MESSAGES[pIdx % totalPersonal];
+      return {
+        text: msgGen(profile.name || 'Achiever'),
+        source: 'Tracky Co.',
+        category: 'Personalized',
+        isPersonalized: true
+      };
+    }
+  }, [profile.name]);
+
+  useEffect(() => {
+    setAffirmation(getDayAffirmation());
+  }, [profile.name, getDayAffirmation]);
+
+  const rollRandomAffirmation = () => {
+    const rollPersonal = Math.random() > 0.45;
+    if (rollPersonal) {
+      const pIdx = Math.floor(Math.random() * PERSONAL_MESSAGES.length);
+      const msgGen = PERSONAL_MESSAGES[pIdx];
+      setAffirmation({
+        text: msgGen(profile.name || 'Achiever'),
+        source: 'Tracky Co.',
+        category: 'Personalized',
+        isPersonalized: true
+      });
+    } else {
+      const affIdx = Math.floor(Math.random() * AFFIRMATIONS.length);
+      const aff = AFFIRMATIONS[affIdx];
+      setAffirmation({
+        text: aff.text,
+        source: aff.source,
+        category: aff.category,
+        isPersonalized: false
+      });
+    }
+  };
 
   // Today Date Reference
   const todayStr = new Date().toISOString().split('T')[0];
@@ -278,6 +379,42 @@ export const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ user, prof
                 <span>Today</span>
               </button>
             </div>
+
+            {/* Daily Affirmation Module */}
+            {affirmation && (
+              <div className="frosted-card relative overflow-hidden p-5 rounded-[28px] bg-gradient-to-br from-indigo-50/50 via-white/80 to-purple-55/20 dark:from-indigo-950/20 dark:via-slate-900/40 dark:to-transparent border border-indigo-100/40 dark:border-indigo-900/30 flex flex-col gap-3 shadow-2xs">
+                {/* Top header row */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest bg-indigo-50/60 dark:bg-indigo-950/50 px-2.5 py-0.5 rounded-md flex items-center gap-1 select-none">
+                    <Sparkles className="w-2.5 h-2.5 text-amber-500 animate-pulse" />
+                    <span>{affirmation.category} Spark</span>
+                  </span>
+                  
+                  <button 
+                    onClick={rollRandomAffirmation}
+                    title="Get a new inspirational spark"
+                    type="button"
+                    className="p-1 px-1.5 rounded-lg bg-white/70 hover:bg-white dark:bg-slate-900/60 dark:hover:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-450 hover:text-indigo-600 dark:text-slate-450 dark:hover:text-indigo-400 transition-all select-none cursor-pointer active:scale-90 flex items-center gap-1 text-[9.5px] font-black uppercase tracking-wider"
+                  >
+                    <Shuffle className="w-2.5 h-2.5" />
+                    <span>Spark</span>
+                  </button>
+                </div>
+
+                {/* Body Quote */}
+                <div className="relative pl-6 py-0.5">
+                  <Quote className="w-5 h-5 text-indigo-100 dark:text-indigo-950 absolute left-0 top-0 transform rotate-180" />
+                  <p className="text-xs font-bold text-slate-750 dark:text-slate-200 leading-relaxed font-sans">
+                    {affirmation.text}
+                  </p>
+                </div>
+
+                {/* Footer source */}
+                <span className="text-[9px] font-black tracking-wider text-slate-400 dark:text-slate-500 uppercase self-end font-mono">
+                  — {affirmation.source}
+                </span>
+              </div>
+            )}
 
             {/* List entries */}
             <div className="space-y-3.5">

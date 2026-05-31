@@ -24,7 +24,9 @@ import {
   X,
   Smile,
   Info,
-  ChevronRight
+  ChevronRight,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -35,6 +37,7 @@ interface AiGoalCoachProps {
   user: any;
   profile: UserProfile | null;
   onGoalCreated: (goal: Goal) => void;
+  goals: Goal[];
 }
 
 interface ChatMessage {
@@ -62,7 +65,7 @@ interface DecomposedPlan {
   }>;
 }
 
-export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalCreated }) => {
+export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalCreated, goals }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -71,6 +74,19 @@ export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalC
   const [errorText, setErrorText] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
+
+  // Sub-tab switching between decomposer and productivity advisor
+  const [coachSubMode, setCoachSubMode] = useState<'decomposer' | 'productivity'>('decomposer');
+
+  // Productivity Coach elements
+  const [productivityReport, setProductivityReport] = useState<{
+    encouragement: string;
+    consistencyAdvice: string;
+    focusRecommendations: string;
+    recoverySuggestions: string;
+  } | null>(null);
+  const [loadingProductivity, setLoadingProductivity] = useState(false);
+  const [errorProductivity, setErrorProductivity] = useState<string | null>(null);
 
   // Advanced Interactive customizer inputs
   const [customTitle, setCustomTitle] = useState('');
@@ -85,6 +101,116 @@ export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalC
   const [customTasks, setCustomTasks] = useState<Array<{ title: string; dayIndex: number; value: number }>>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Voice Speech synthesis support
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(() => {
+    return localStorage.getItem('tracky_auto_speak') === 'true';
+  });
+  const [currentlySpeakingId, setCurrentlySpeakingId] = useState<string | null>(null);
+
+  const speakMessage = (messageId: string, text: string) => {
+    if (!('speechSynthesis' in window)) return;
+
+    if (currentlySpeakingId === messageId) {
+      window.speechSynthesis.cancel();
+      setCurrentlySpeakingId(null);
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {
+      // ignore
+    }
+
+    const cleanText = text
+      .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.volume = 1;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.08;
+
+    const voices = window.speechSynthesis.getVoices();
+    const cleanVoice = voices.find(v => v.lang.includes('en-GB') || v.lang.includes('en-US')) || voices[0];
+    if (cleanVoice) utterance.voice = cleanVoice;
+
+    utterance.onend = () => {
+      setCurrentlySpeakingId(null);
+    };
+    utterance.onerror = () => {
+      setCurrentlySpeakingId(null);
+    };
+
+    setCurrentlySpeakingId(messageId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleAutoSpeak = () => {
+    const newValue = !autoSpeak;
+    setAutoSpeak(newValue);
+    localStorage.setItem('tracky_auto_speak', String(newValue));
+    if (!newValue && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setCurrentlySpeakingId(null);
+    }
+  };
+
+  // Auto-speak new coach messages if auto-speak is enabled
+  useEffect(() => {
+    if (messages.length > 0 && autoSpeak) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.sender === 'coach') {
+        const timeoutId = setTimeout(() => {
+          speakMessage(lastMessage.id, lastMessage.text);
+        }, 300);
+        return () => clearTimeout(timeoutId);
+      }
+    }
+  }, [messages.length, autoSpeak]);
+
+  // Clean-up speech on unmount
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // Productivity report fetching method
+  const fetchProductivityReport = async () => {
+    if (loadingProductivity) return;
+    setLoadingProductivity(true);
+    setErrorProductivity(null);
+    try {
+      const response = await fetch('/api/coach/productivity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile, goals: goals || [] })
+      });
+      if (!response.ok) {
+        throw new Error('Problem connecting to productivity assistant network.');
+      }
+      const data = await response.json();
+      setProductivityReport(data);
+    } catch (err: any) {
+      console.error(err);
+      setErrorProductivity(err?.message || 'Failed to sync with performance metrics.');
+    } finally {
+      setLoadingProductivity(false);
+    }
+  };
+
+  // Trigger report retrieval if sub-mode switches and summary doesn't exist
+  useEffect(() => {
+    if (coachSubMode === 'productivity' && !productivityReport && goals && goals.length > 0) {
+      fetchProductivityReport();
+    }
+  }, [coachSubMode]);
 
   // Standard preset helper triggers
   const PRESET_PROMPTS = [
@@ -112,7 +238,7 @@ export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalC
         {
           id: 'welcome',
           sender: 'coach',
-          text: `Hey there, ${profile?.name || 'Achiever'}! 👋 I am Tracky, your AI Goal Coach.\n\nTell me an aspiration you have in natural language. Spill out messy scribbles, casual intentions, or broad goals like "get strong" or "learn python."\n\nI will ask clarifying questions if vague, refine your objective, and decompose it into the smallest possible, high-momentum tasks along a beautifully-crafted 7-day Success Trail!`,
+          text: `Welcome ${profile?.name || 'Achiever'}! My name is Tracky, and I'll be assisting you on your goals, so what would you like to set for the week?`,
           timestamp: new Date()
         }
       ]);
@@ -362,8 +488,206 @@ export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalC
         )}
       </div>
 
+      {/* Sub-tabs switcher */}
+      <div className="w-full mt-4 flex border border-slate-200/60 dark:border-slate-800 p-1.5 rounded-2xl bg-slate-50/50 dark:bg-slate-900/40 relative">
+        <button
+          onClick={() => setCoachSubMode('decomposer')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            coachSubMode === 'decomposer'
+              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950 shadow-sm'
+              : 'text-slate-400 hover:text-slate-650 dark:text-slate-500 dark:hover:text-slate-300'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Roadmap Builder</span>
+        </button>
+        <button
+          onClick={() => setCoachSubMode('productivity')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            coachSubMode === 'productivity'
+              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950 shadow-sm'
+              : 'text-slate-400 hover:text-slate-650 dark:text-slate-500 dark:hover:text-slate-300'
+          }`}
+        >
+          <Zap className="w-4 h-4 animate-bounce" style={{ animationDuration: '3s' }} />
+          <span>AI Productivity Coach</span>
+        </button>
+      </div>
+
       <div className="w-full flex flex-col gap-6 mt-6 items-stretch select-none">
-        <AnimatePresence mode="wait">
+        {coachSubMode === 'productivity' ? (
+          <motion.div
+            key="productivity-panel"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            className="w-full space-y-6 text-left"
+          >
+            {/* Header / Info bar for Productivity Coach */}
+            <div className="frosted-card p-6 bg-gradient-to-br from-indigo-500/10 via-slate-50 to-emerald-500/5 dark:from-indigo-950/20 dark:via-slate-950/40 dark:to-emerald-950/10 border border-slate-150 dark:border-slate-850 rounded-[32px] flex flex-col sm:flex-row gap-5 items-start sm:items-center shadow-xs">
+              <div className="p-4 bg-indigo-55/10 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-100/40 rounded-3xl shrink-0">
+                <Brain className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-pulse" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9.5px] uppercase tracking-widest font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-0.5 rounded-full border border-indigo-100/30">Analytics Active</span>
+                  <span className="text-[9px] text-slate-450 dark:text-slate-500 font-extrabold">• Live Status Sync</span>
+                </div>
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-105">Velocity & Alignment Room</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  I have analyzed your goals, total completions, and logging history. Below is your tailored psychological performance advice to help you maintain consistency and recover seamless velocity.
+                </p>
+              </div>
+            </div>
+
+            {/* If zero goals set yet */}
+            {goals.length === 0 ? (
+              <div className="frosted-card p-8 text-center rounded-[32px] border border-dashed border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/15 space-y-4">
+                <div className="mx-auto w-12 h-12 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 dark:text-indigo-400 rounded-full flex items-center justify-center border border-indigo-150/10">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1.5">
+                  <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-150">No habits tracked yet</h4>
+                  <p className="text-xs text-slate-500">
+                    To start receiving customized encouragement, focus recommendations, and recovery playbooks, you must first create a target goal!
+                  </p>
+                </div>
+                <button
+                  onClick={() => setCoachSubMode('decomposer')}
+                  className="py-2.5 px-5 bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950 rounded-2xl text-xs font-black uppercase tracking-wider hover:scale-102 hover:shadow-md active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>Build First Goal Roadmap</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            ) : loadingProductivity ? (
+              /* Loading screen skeleton pulse elements */
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-100/40 dark:bg-slate-900/30 border border-slate-150/40 dark:border-slate-850 rounded-[24px] flex items-center gap-3">
+                  <div className="w-5 h-5 border-2 border-indigo-550 border-t-transparent rounded-full animate-spin shrink-0 text-indigo-500" />
+                  <span className="text-xs font-black text-indigo-650 dark:text-indigo-400 font-handwritten italic tracking-wide animate-pulse">
+                    Tracky is consulting model nodes to compile your status...
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="frosted-card p-5 rounded-3xl border border-slate-100 dark:border-slate-850 space-y-3 animate-pulse bg-white/40 dark:bg-slate-900/10 min-h-[160px]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 bg-slate-200 dark:bg-slate-800 rounded-lg shrink-0" />
+                        <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-1/3" />
+                      </div>
+                      <div className="space-y-1.5 pt-2">
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-full" />
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-5/6" />
+                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-4/5" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : errorProductivity ? (
+              /* Error notification screen */
+              <div className="p-5 bg-rose-50 border border-rose-100 text-rose-705 dark:bg-rose-955/20 dark:border-rose-900 rounded-[24px] space-y-3 text-xs leading-relaxed">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-500" />
+                  <div>
+                    <span className="font-extrabold block">Sync Interrupted</span>
+                    <span>{errorProductivity}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={fetchProductivityReport}
+                  className="px-4 py-2 bg-rose-100 text-rose-750 hover:bg-rose-200 dark:bg-rose-950/40 dark:text-rose-455 rounded-xl font-bold border border-rose-200/50 dark:border-rose-900 transition-all cursor-pointer"
+                >
+                  Retry Diagnostic
+                </button>
+              </div>
+            ) : productivityReport ? (
+              /* Core Report Visual Cards Grid */
+              <div className="space-y-6">
+                
+                {/* Visual Active Goals indicators */}
+                <div className="flex flex-wrap gap-2 items-center bg-slate-50/50 dark:bg-slate-900/20 border border-slate-150/45 dark:border-slate-850 p-2.5 rounded-2xl">
+                  <span className="text-[8.5px] uppercase font-black tracking-widest text-slate-400">Inspected Habits ({goals.length}):</span>
+                  {goals.map((g, i) => (
+                    <span key={g.id || i} className="text-[10px] font-black px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 text-slate-700 dark:text-slate-350 rounded-lg shadow-3xs">
+                      {g.title}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
+                  {/* Category 1: Encouragement */}
+                  <div className="frosted-card p-5 hover:border-slate-250 dark:hover:border-slate-750 transition-all bg-gradient-to-b from-indigo-50/20 to-white dark:from-indigo-950/5 dark:to-slate-935/50 border border-slate-150 dark:border-slate-850 rounded-[28px]">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-605 dark:text-indigo-400 rounded-lg">
+                        <Smile className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      </div>
+                      <h4 className="text-xs font-black text-slate-800 dark:text-slate-105 uppercase tracking-wide font-bold">Encouragement</h4>
+                    </div>
+                    <div className="text-xs font-medium text-slate-655 dark:text-slate-300 leading-relaxed mt-4 bg-slate-50/60 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-850/55">
+                      {productivityReport.encouragement}
+                    </div>
+                  </div>
+
+                  {/* Category 2: Consistency Blueprint */}
+                  <div className="frosted-card p-5 hover:border-slate-250 dark:hover:border-slate-750 transition-all bg-gradient-to-b from-emerald-50/20 to-white dark:from-emerald-950/5 dark:to-slate-935/50 border border-slate-150 dark:border-slate-850 rounded-[28px]">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="p-1.5 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-650 dark:text-emerald-400 rounded-lg">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <h4 className="text-xs font-black text-slate-800 dark:text-slate-105 uppercase tracking-wide font-bold font-bold">Consistency Advice</h4>
+                    </div>
+                    <div className="text-xs font-medium text-slate-655 dark:text-slate-300 leading-relaxed mt-4 bg-slate-50/60 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-850/55">
+                      {productivityReport.consistencyAdvice}
+                    </div>
+                  </div>
+
+                  {/* Category 3: Focus recommendations */}
+                  <div className="frosted-card p-5 hover:border-slate-250 dark:hover:border-slate-750 transition-all bg-gradient-to-b from-amber-50/20 to-white dark:from-amber-950/5 dark:to-slate-935/50 border border-slate-150 dark:border-slate-850 rounded-[28px]">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="p-1.5 bg-amber-50 dark:bg-amber-950/50 text-amber-650 dark:text-amber-400 rounded-lg">
+                        <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <h4 className="text-xs font-black text-slate-800 dark:text-slate-105 uppercase tracking-wide font-bold">Focus Recommendations</h4>
+                    </div>
+                    <div className="text-xs font-medium text-slate-655 dark:text-slate-300 leading-relaxed mt-4 bg-slate-50/60 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-850/55">
+                      {productivityReport.focusRecommendations}
+                    </div>
+                  </div>
+
+                  {/* Category 4: Recovery Suggestions after missed days */}
+                  <div className="frosted-card p-5 hover:border-slate-250 dark:hover:border-slate-750 transition-all bg-gradient-to-b from-rose-50/20 to-white dark:from-rose-950/5 dark:to-slate-935/50 border border-slate-150 dark:border-slate-850 rounded-[28px]">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="p-1.5 bg-rose-50 dark:bg-rose-950/50 text-rose-650 dark:text-rose-405 rounded-lg">
+                        <RefreshCw className="w-4 h-4 text-rose-600 dark:text-rose-450" />
+                      </div>
+                      <h4 className="text-xs font-black text-slate-800 dark:text-slate-105 uppercase tracking-wide font-bold">Missed Days Recovery</h4>
+                    </div>
+                    <div className="text-xs font-medium text-slate-655 dark:text-slate-300 leading-relaxed mt-4 bg-slate-50/60 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-850/55">
+                      {productivityReport.recoverySuggestions}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Regenerate advice controller panel */}
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={fetchProductivityReport}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 rounded-2xl text-xs font-black text-slate-700 dark:text-slate-300 hover:bg-slate-200 hover:text-slate-900 hover:scale-101 active:scale-97 cursor-pointer shadow-3xs transition-all"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingProductivity ? 'animate-spin' : ''}`} />
+                    <span>Refresh Personalized Audit</span>
+                  </button>
+                </div>
+
+              </div>
+            ) : null}
+          </motion.div>
+        ) : (
+          <AnimatePresence mode="wait">
           {!decomposedPlan ? (
             
             // CHAT DIALOG WORKSPACE VIEW
@@ -377,19 +701,43 @@ export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalC
               
               {/* Left Chat Window */}
               <div className="flex-1 frosted-card bg-white/75 dark:bg-slate-930/60 border border-slate-150 dark:border-slate-850 rounded-[32px] flex flex-col overflow-hidden shadow-2xs">
-                
-                {/* Chat header identity box */}
-                <div className="p-4 border-b border-slate-100 dark:border-slate-850/60 bg-gradient-to-r from-indigo-50/20 to-indigo-100/5 dark:from-indigo-950/20 flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-55/10 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-405 border border-indigo-100/40 rounded-full">
-                    <Brain className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <div className="p-4 border-b border-slate-100 dark:border-slate-850/60 bg-gradient-to-r from-indigo-50/20 to-indigo-100/5 dark:from-indigo-950/20 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-55/10 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-405 border border-indigo-100/40 rounded-full">
+                      <Brain className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div className="text-left">
+                      <h4 className="text-xs font-black text-slate-800 dark:text-slate-105">Coach Tracky</h4>
+                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-extrabold tracking-widest uppercase flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
+                        <span>Decomposition Online</span>
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-105">Coach Tracky</h4>
-                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-extrabold tracking-widest uppercase flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
-                      <span>Decomposition Online</span>
-                    </span>
-                  </div>
+
+                  {/* Auto Voice Switcher */}
+                  <button
+                    onClick={toggleAutoSpeak}
+                    type="button"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      autoSpeak
+                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400'
+                    }`}
+                    title="Toggle auto speech trigger for received messages"
+                  >
+                    {autoSpeak ? (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5 animate-pulse text-amber-300" />
+                        <span>Voice On</span>
+                      </>
+                    ) : (
+                      <>
+                        <VolumeX className="w-3.5 h-3.5" />
+                        <span>Mute</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
                 {/* Dialog Streams */}
@@ -397,10 +745,29 @@ export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalC
                   {messages.map((m) => (
                     <div 
                       key={m.id} 
-                      className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                      className={`flex items-end gap-2.5 ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
+                      {m.sender === 'coach' && (
+                        <button
+                          onClick={() => speakMessage(m.id, m.text)}
+                          type="button"
+                          className={`p-1.5 rounded-xl border transition-all cursor-pointer shrink-0 self-center ${
+                            currentlySpeakingId === m.id
+                              ? 'bg-indigo-600 border-indigo-550 text-white animate-pulse scale-105 shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:scale-105 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-500 dark:hover:text-indigo-400'
+                          }`}
+                          title={currentlySpeakingId === m.id ? "Pause Speech" : "Read Aloud"}
+                        >
+                          {currentlySpeakingId === m.id ? (
+                            <VolumeX className="w-3.5 h-3.5 text-amber-300" />
+                          ) : (
+                            <Volume2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
+
                       <div 
-                        className={`max-w-[85%] rounded-[24px] px-4 py-3 text-xs leading-normal font-medium shadow-4xs ${
+                        className={`max-w-[80%] rounded-[24px] px-4 py-3 text-xs leading-normal font-medium shadow-4xs ${
                           m.sender === 'user'
                             ? 'bg-slate-900 border border-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 dark:border-slate-200 font-semibold'
                             : 'bg-slate-50 border border-slate-150/70 text-slate-750 dark:bg-slate-900/45 dark:border-slate-800 dark:text-slate-300'
@@ -841,6 +1208,7 @@ export const AiGoalCoach: React.FC<AiGoalCoachProps> = ({ user, profile, onGoalC
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </div>
 
     </div>

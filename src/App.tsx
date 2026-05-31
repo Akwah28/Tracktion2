@@ -27,7 +27,9 @@ import {
   Trophy,
   Bell,
   Brain,
-  X
+  X,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { Goal, UserProfile, GoalFrequency, GoalTask } from './types';
 import { CATEGORIES, INITIAL_GOALS } from './sampleData';
@@ -46,6 +48,7 @@ import AuthScreen from './components/AuthScreen';
 import { LandingPage } from './components/LandingPage';
 import { TracktionLogo } from './components/TracktionLogo';
 import { db, handleFirestoreError, OperationType } from './firebase';
+import { playCompletionSound, playStreakMilestoneSound } from './utils/soundEffects';
 import { doc, getDocFromServer, onSnapshot, setDoc, deleteDoc, collection } from 'firebase/firestore';
 import { ThemeToggle } from './components/ThemeToggle';
 import { GoalCardSkeleton, CalendarRegistrySkeleton, TaskItemSkeleton, ProfileFormSkeleton } from './components/Skeletons';
@@ -142,6 +145,67 @@ export default function App() {
   const [statsSubTab, setStatsSubTab] = useState<'analytics' | 'streaks'>('streaks');
   const [streakEvaluated, setStreakEvaluated] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  
+  // Floating Tracky Coach states
+  const [isFloatingCoachOpen, setIsFloatingCoachOpen] = useState(false);
+  const [showTrackyGreeting, setShowTrackyGreeting] = useState(true);
+  const [isSpeakingGreeting, setIsSpeakingGreeting] = useState(false);
+
+  const speakGreetingMessage = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+
+    if (isSpeakingGreeting) {
+      setIsSpeakingGreeting(false);
+      return;
+    }
+
+    // Clean emojis and markdown
+    const cleanText = text
+      .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.volume = 1;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.08; // Friendly cheerful tone
+
+    const voices = window.speechSynthesis.getVoices();
+    const bestVoice = voices.find(v => v.lang.includes('en-GB') || v.lang.includes('en-US')) || voices[0];
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+    }
+
+    utterance.onend = () => {
+      setIsSpeakingGreeting(false);
+    };
+    utterance.onerror = () => {
+      setIsSpeakingGreeting(false);
+    };
+
+    setIsSpeakingGreeting(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Auto-speak greeting when it shows up
+  useEffect(() => {
+    if (showTrackyGreeting && profile?.name) {
+      const greetingText = `Welcome ${profile.name}! My name is Tracky, and I'll be assisting you on your goals, so what would you like to set for the week?`;
+      // Allow browser interaction buffer before speaking
+      const speakerTimeout = setTimeout(() => {
+        // Only auto speak if speech isn't already speaking
+        if (!window.speechSynthesis.speaking) {
+          speakGreetingMessage(greetingText);
+        }
+      }, 1500);
+      return () => clearTimeout(speakerTimeout);
+    }
+  }, [showTrackyGreeting, profile?.name]);
+
   
   // Selection / Modal states
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
@@ -692,6 +756,15 @@ export default function App() {
         setCelebrationGoal(g.title);
         setTimeout(() => setCelebrationGoal(null), 3000);
 
+        // Subtly trigger completion sound if enabled
+        if (profile.soundEnabled ?? true) {
+          try {
+            playCompletionSound();
+          } catch (soundErr) {
+            console.warn("Failed to play completion sound:", soundErr);
+          }
+        }
+
         finalCompletionDate = today;
 
         if (!g.lastCompletedDate) {
@@ -737,6 +810,19 @@ export default function App() {
           } else {
             hasStreakForCheck = false;
           }
+        }
+      }
+
+      // Play streak milestone sound if newly achieved!
+      const previousGlobalStreak = profile.stats.globalStreak || 0;
+      const isMilestone = [3, 5, 10, 30].includes(contiguousStreak);
+      const isSoundOn = profile.soundEnabled ?? true;
+      
+      if (isSoundOn && isMilestone && contiguousStreak > previousGlobalStreak) {
+        try {
+          playStreakMilestoneSound();
+        } catch (soundErr) {
+          console.warn("Failed to play streak milestone sound:", soundErr);
         }
       }
 
@@ -1898,6 +1984,7 @@ export default function App() {
               <AiGoalCoach 
                 user={user} 
                 profile={profile} 
+                goals={goals}
                 onGoalCreated={(newGoal) => {
                   setSelectedGoal(newGoal);
                   setActiveTab('targets');
@@ -2160,6 +2247,137 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+
+        {/* Tracky Coach Slideover Panel */}
+        <AnimatePresence>
+          {isFloatingCoachOpen && profile && (
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 26, stiffness: 210 }}
+              className="absolute inset-0 bg-white dark:bg-slate-950 z-50 overflow-y-auto no-scrollbar flex flex-col"
+            >
+              {/* Header with Title and Close icon button */}
+              <div className="p-4 flex items-center justify-between border-b border-slate-150 dark:border-slate-850 bg-slate-50/80 dark:bg-slate-900/40 backdrop-blur-md sticky top-0 z-10 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-500 flex items-center justify-center font-bold text-base shadow-3xs">
+                    🤖
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-100">Coach Tracky</h4>
+                    <span className="text-[9px] text-slate-400">Personal Productivity Advisor</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsFloatingCoachOpen(false)}
+                  className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-455 hover:text-slate-700 dark:hover:text-slate-350 transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              {/* Scrollable Coach Component */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-5 no-scrollbar bg-slate-50/30 dark:bg-slate-950">
+                <AiGoalCoach
+                  user={user}
+                  profile={profile}
+                  goals={goals}
+                  onGoalCreated={(newGoal) => {
+                    setSelectedGoal(newGoal);
+                    setIsFloatingCoachOpen(false);
+                    setActiveTab('targets');
+                  }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Floating AI Coach Icon and Greeting Bubble */}
+        {!isFloatingCoachOpen && activeTab !== 'journal' && profile && (
+          <div className="absolute bottom-20 right-4 z-40 flex flex-col items-end gap-2 pointer-events-none select-none">
+            {/* Elegant Speech bubble */}
+            <AnimatePresence>
+              {showTrackyGreeting && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: 0.6, duration: 0.35 }}
+                  className="bg-indigo-650 dark:bg-indigo-600 text-white p-3.5 rounded-2xl shadow-xl border border-indigo-500/45 max-w-[210px] relative pointer-events-auto cursor-pointer"
+                  onClick={() => {
+                    setIsFloatingCoachOpen(true);
+                    setShowTrackyGreeting(false);
+                  }}
+                >
+                  {/* Close greeting button inside speech bubble */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowTrackyGreeting(false);
+                    }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-slate-900 border border-slate-750 dark:border-slate-800 text-white rounded-full flex items-center justify-center hover:bg-slate-800 dark:hover:bg-slate-705 transition-all cursor-pointer shadow-sm text-xs font-bold font-sans"
+                    title="Dismiss"
+                  >
+                    ×
+                  </button>
+                  <p className="text-[11px] leading-relaxed font-semibold text-left">
+                    Welcome <span className="font-extrabold text-amber-300">{profile?.name || 'Achiever'}</span>! My name is <span className="font-extrabold text-amber-305">Tracky</span>, and I'll be assisting you on your goals, so what would you like to set for the week? ✨
+                  </p>
+                  
+                  {/* Floating Speech controller status bar */}
+                  <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-indigo-550 dark:border-indigo-500/35">
+                    <span className="text-[8.5px] text-indigo-200 uppercase font-bold tracking-wider flex items-center gap-1 select-none">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isSpeakingGreeting ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`}></span>
+                      {isSpeakingGreeting ? 'Speaking...' : 'Tracky Voice'}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        speakGreetingMessage(`Welcome ${profile?.name || 'Achiever'}! My name is Tracky, and I'll be assisting you on your goals, so what would you like to set for the week?`);
+                      }}
+                      className="p-1 rounded-md bg-indigo-700/50 hover:bg-slate-900 border border-indigo-500/20 text-white transition-all cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
+                      title={isSpeakingGreeting ? "Mute Tracky" : "Read Greeting Out Loud"}
+                    >
+                      {isSpeakingGreeting ? (
+                        <VolumeX className="w-3.5 h-3.5 text-amber-300" />
+                      ) : (
+                        <Volume2 className="w-3.5 h-3.5 text-white" />
+                      )}
+                    </button>
+                  </div>
+                  {/* Little speech tail */}
+                  <div className="absolute right-5 bottom-[-5px] w-2.5 h-2.5 bg-indigo-650 dark:bg-indigo-600 border-r border-b border-indigo-505/30 rotate-45" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Glowing floating coach button */}
+            <motion.button
+              onClick={() => {
+                setIsFloatingCoachOpen(true);
+                setShowTrackyGreeting(false);
+              }}
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.93 }}
+              className="pointer-events-auto flex items-center justify-center w-12 h-12 bg-slate-900 border border-slate-750/50 dark:bg-indigo-600 dark:border-indigo-505 text-white rounded-full shadow-lg cursor-pointer relative group"
+              style={{
+                boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.45), 0 8px 10px -6px rgba(99, 102, 241, 0.45)'
+              }}
+            >
+              {/* Cute animation pulses in background */}
+              <div className="absolute inset-0 rounded-full bg-indigo-500/15 dark:bg-indigo-400/15 animate-ping pointer-events-none" />
+              <Brain className="w-5.5 h-5.5 text-indigo-400 group-hover:text-indigo-305 dark:text-white transition-colors" />
+              
+              {/* Small notification beacon online indicator */}
+              <span className="absolute top-0 right-0 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+              </span>
+            </motion.button>
+          </div>
+        )}
 
       </div>
     </div>
